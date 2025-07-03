@@ -1,0 +1,54 @@
+---
+title: "Trabalho"
+output:
+  pdf_document: default
+  html_document: default
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Análise dos dados
+
+```{r df_load}
+load("bfd_2022.rdata")
+```
+
+Abaixo o `summary` da base de dados:  
+
+```{r summary}
+summary(bfd)
+```
+
+A ideia é fazer a análise de cada variável individualmente.  
+
+
+### Arrival  
+
+É o código do aeroporto de destino do voo.
+
+```{r arrival}
+table(bfd$arrival) %>% 
+    as.data.frame() %>% 
+    arrange(desc(Freq)) %>% 
+    rename(Aeroporto = Var1, Voos.Destino = Freq) %>% 
+    head(10)
+```
+
+
+### Depart
+
+É o código do aeroporto de origem do voo.
+
+```{r depart}
+table(bfd$depart) %>% 
+    as.data.frame() %>% 
+    arrange(desc(Freq)) %>% 
+    rename(Aeroporto = Var1, Voos.Origem = Freq) %>% 
+    head(10)
+```
+
+
