@@ -1,0 +1,48 @@
+---
+title: "sanity_check"
+output:
+  pdf_document: default
+  html_document: default
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+```
+
+## Análise dos dados
+
+```{r bfd_load}
+load("bfd_2022.rdata")
+
+cols <- c("expected_depart", "real_depart", "expected_arrival", "real_arrival")
+
+for (col in cols) {
+  bfd[[col]] <- as.POSIXct(bfd[[col]])
+}
+
+bfd$delay_depart_target <- ifelse(bfd$delay_depart > 15, 1, 0)
+
+head(bfd)
+```
+
+```{r check_duplicates}
+bfd[duplicated(bfd), ]
+```
+O dataframe completo possui apenas uma duplicata. Essa coluna possui informação repetida e deve ser removida.
+
+```{r percentual_nulos}
+
+quantidade_nulos <- bfd %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "coluna", values_to = "qtd_na") %>%
+  arrange(desc(qtd_na))
+
+quantidade_nulos
+```
+
+O dataframe possui valores nulos na maioria das colunas. Em especial, a coluna 'observation' apresenta 100% de valores nulos, sendo inútil para as análises devido à ausência de informação e pode ser removida. Porém, o restante das colunas que possuem nulos apresenta uma quantidade que pode ser considerada. Por exemplo, as colunas 'depart_sky_coverage' e 'arrival_sky_coverage' possuem a maior quantidade de valores nulos depois da 'observation', correspondendo a ~36% de nulos.
+
+Um ponto a ser observado também é que a coluna 'delay_depart_target' possui 34984 valores nulos. Como essa coluna é o target e é necessário possuir um valor para direcionar as análises para suas classes, o recomendado seria remover essas linhas que não possuem informação relevante mediante o target.
