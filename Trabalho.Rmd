@@ -51,4 +51,144 @@ table(bfd$depart) %>%
     head(10)
 ```
 
+### Route
+
+É a rota voo com aeroporto de origem e aeroporto de chegada.
+
+```{r route}
+table(bfd$route) %>% 
+    as.data.frame() %>% 
+    arrange(desc(Freq)) %>% 
+    rename(Rota = Var1, Voos = Freq) %>% 
+    head(10)
+```
+
+### Company
+
+É a companhia aérea responsável pelo voo.
+
+```{r company}
+table(bfd$company) %>% 
+    as.data.frame() %>% 
+    arrange(desc(Freq)) %>% 
+    rename(Companhia = Var1, Voos = Freq) %>% 
+    head(10)
+```
+
+### Expected Flight Length
+
+```{r expected_flight_length}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=expected_flight_length, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### Real Flight Length
+
+```{r real_flight_length}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=real_flight_length, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart air temperature
+
+```{r depart_air_temperature}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_air_temperature, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_apparent_temperature
+
+```{r depart_apparent_temperature}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_apparent_temperature, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_visibility
+
+```{r depart_visibility}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_visibility, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_relative_humidity
+
+```{r depart_relative_humidity}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_relative_humidity, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_wind_speed
+
+```{r depart_wind_speed}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_wind_speed, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_pressure
+
+```{r depart_pressure}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_pressure, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
+
+### depart_dew_point
+
+```{r depart_dew_point}
+ggplot(bfd, aes(x=factor(status_depart),
+                 y=depart_dew_point, fill=factor(status_depart))) +
+  xlab("Status Partida") +
+  theme(legend.position="none",
+        axis.text = element_text(size = 14),
+        text = element_text(size = 14),
+        axis.text.x = element_text(size = 8)) +
+  geom_boxplot()
+```
 
