@@ -50,8 +50,16 @@ numericas_depart_status %>% na.omit %>% group_by(status_depart) %>%
             expected_flight_length = mean(expected_flight_length), real_flight_length = mean(real_flight_length),
             depart_visibility = mean(depart_visibility))
 
-ggplot(bfd, aes(x=factor(status_depart),
-                 y=expected_flight_length, fill=factor(status_depart))) +
+top5 <- table(bfd$depart) %>% 
+  as.data.frame() %>% 
+  arrange(desc(Freq)) %>% 
+  rename(Aeroporto = Var1, Voos.Origem = Freq) %>% 
+  head(5) %>% select(Aeroporto)
+
+bfd_top5 <- bfd %>% filter(depart %in% top5$Aeroporto)
+
+ggplot(bfd_top5, aes(x=factor(depart),
+  y=delay_depart, fill=factor(depart))) +
   xlab("Status Partida") +
   theme(legend.position="none",
         axis.text = element_text(size = 14),
