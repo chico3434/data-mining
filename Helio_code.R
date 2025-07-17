@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# Setup inicial
+# Importando as bibliotecas necessárias
 # ------------------------------------------------------------
 library(dplyr)
 library(stringr)
@@ -8,11 +8,12 @@ library(ggplot2)
 library(glue)
 library(forcats)
 
-# 0. Carrega seu data.frame
+# Carregando a base de dados
 loaded_objs <- load("bfd_2022.rdata")
-df <- get(loaded_objs[1])   # ajuste se for outro nome
+df <- get(loaded_objs[1]) 
 
-# 1. Lista das variáveis depart/arrival
+# Lista das variáveis depart/arrival para as informações climaticas ou meteorológicas
+# que serão verificadas quanto a NAs e contagem de aeroportos
 vars_to_check <- c(
   "depart_air_temperature",   "depart_dew_point",
   "depart_relative_humidity", "depart_wind_direction",
@@ -28,7 +29,8 @@ vars_to_check <- c(
   "arrival_wind_speed_scale", "arrival_wind_direction_cat"
 )
 
-# 2. Identifica coluna de aeroporto (depart ou arrival)
+# Identifica a coluna de aeroporto de partida ou chegada
+# com base no prefixo (depart ou arrival)
 find_airport_col <- function(prefix, data) {
   candidates <- if (prefix == "depart") {
     c("depart", "departure_airport", "origin", "orig_airport")
@@ -42,7 +44,8 @@ find_airport_col <- function(prefix, data) {
   hit[1]
 }
 
-# 3. Calcula top‐3 NAs por variável
+# Define e calcula a tabela de contagem de NAs por variável e aeroporto
+# para cada variável na lista vars_to_check
 calc_missing_tbl <- function(var_name, data) {
   prefix <- if (str_starts(var_name, "depart_")) "depart" else "arrival"
   airport_col <- find_airport_col(prefix, data)
@@ -54,14 +57,15 @@ calc_missing_tbl <- function(var_name, data) {
     mutate(variable = var_name, target = prefix) %>%
     rename(airport_code = code)
 }
-
+# Calcula a tabela de contagem de NAs para cada variável
 missing_list <- map(vars_to_check, calc_missing_tbl, data = df)
 
+# Combina todas as tabelas de contagem de NAs em uma única tabela
 top3_tbl <- map_dfr(missing_list, ~ slice_max(.x, missing_n, n = 3),
                     .id = "var_index") %>%
   select(variable, airport_code, missing_n)
 
-# dicionário: variable → vetor de aeroportos
+# dicionário: variable que contém os aeroportos no top 3
 top3_dict <- top3_tbl %>% split(.$variable) %>% map(~ .$airport_code)
 
 # ranking dos aeroportos que mais aparecem no TOP3
@@ -70,7 +74,7 @@ airport_top5 <- top3_tbl %>%
   slice_max(freq, n = 5) %>%
   pull(airport_code)
 
-# 4. Função que calcula NAs e presentes por variável para um aeroporto
+# Função que calcula NAs e presentes por variável para um aeroporto
 calc_missing_by_airport <- function(airport_code, prefix, data, vars) {
   airport_col <- find_airport_col(prefix, data)
   # só as variáveis do prefixo
@@ -99,7 +103,7 @@ calc_missing_by_airport <- function(airport_code, prefix, data, vars) {
   tbl
 }
 
-# 5. Função para plot (opcional)
+# Função para plotagem dos dados faltantes dos aeroportos com soma acumulada
 plot_missing_by_airport <- function(tbl, top_n = 20) {
   tbl2 <- tbl %>% slice_head(n = min(top_n, nrow(tbl)))
   
@@ -127,7 +131,7 @@ plot_missing_by_airport <- function(tbl, top_n = 20) {
     )
 }
 
-# 6. Função que executa tudo e imprime no terminal
+# Função que executa o fluxo de analise especifica dos aeroportos com maiores quantidades de NAs
 run_one_airport <- function(airport_code, prefix, data, dict, top_n = 20) {
   # variáveis nas quais esse aeroporto aparece no top3
   all_vars <- names(dict)
@@ -139,7 +143,7 @@ run_one_airport <- function(airport_code, prefix, data, dict, top_n = 20) {
   tbl <- calc_missing_by_airport(airport_code, prefix, data, vars_ac)
   if (nrow(tbl) == 0) return(invisible(NULL))
   
-  # imprime proporções no console
+  #! imprime proporções no console, importante para validação dos dados e ver quais possuem somente valores NA
   tbl %>% 
     rowwise() %>%
     mutate(pct_missing = round(100*missing_n/(missing_n + present_n), 1)) %>%
@@ -152,7 +156,7 @@ run_one_airport <- function(airport_code, prefix, data, dict, top_n = 20) {
     pull(msg) %>%
     walk(message)
   
-  # opcional: gera e salva o gráfico
+  # Salva os graficos por cateria
   p <- plot_missing_by_airport(tbl, top_n)
   ggsave(
     filename = glue("figures/{airport_code}_{prefix}.png"),
