@@ -4,23 +4,10 @@ library(tidyverse)
 ## carrega a base de dados
 load("bfd_2022.rdata")
 
-# código apra mudar tipo de data (otimizar busca por duplicada)
-date_cols <- c("expected_depart", "real_depart", "expected_arrival", "real_arrival")
-
-for (col in date_cols) {
-  bfd[[col]] <- as.POSIXct(bfd[[col]])
-}
-
 ## summary para ter um overview dos atributos da base
 summary(bfd)
 # nota-se um grande número (mais de 10% nna maioria das variáveis) de NA's nas variáveis relacionadas a tempo ou condições do voo (temperatura, umidade, vento, pressão, visibilidade).
 # a variável "observação" possui apenas NA's
-
-duplicadas <- duplicated(bfd)
-
-sum(duplicadas)
-bfd[duplicadas,]
-## uma duplicada, foi um voo semr real_depart (não há registro de decolagem)
 
 # boxplot de delay_depart (limitado em -250 e 250)
 bfd %>% ggplot(aes(y=delay_depart)) +
