@@ -29,7 +29,7 @@ for (col in cols) {
   bfd[[col]] <- as.POSIXct(bfd[[col]])
 }
 
-bfd
+head(bfd)
 ```
 
 O dataset a ser trabalhado consiste em 845,160 linhas e 48 colunas referentes aos vôos no Brasil em 2022.
