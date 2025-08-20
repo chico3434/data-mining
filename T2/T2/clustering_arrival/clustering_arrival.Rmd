@@ -1,0 +1,173 @@
+---
+title: "clustering_arrival"
+output: pdf_document
+---
+
+# Clusterização 2: Atraso na Chegada
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(daltoolbox)
+```
+
+## Carregamento do dataframe
+
+```{r bfd_load}
+load("/home/matheus_melo/data-mining/bfd_2022.rdata")
+
+cols <- c("expected_depart", "real_depart", "expected_arrival", "real_arrival")
+
+for (col in cols) {
+  bfd[[col]] <- as.POSIXct(bfd[[col]])
+}
+
+bfd
+```
+
+## Filtro com apenas as colunas numéricas 
+
+```{r bfd_depart_numerical}
+
+cols <- c("delay_arrival", "real_flight_length", "arrival_air_temperature", "arrival_dew_point", "arrival_relative_humidity", "arrival_wind_direction", "arrival_wind_speed", "arrival_pressure", "arrival_visibility", "arrival_apparent_temperature")
+
+bfd_arrival_numerical <- bfd[, cols]
+
+bfd_arrival_numerical
+```
+
+## Remoção de nulos
+
+```{r bfd_arrival_numerical_removal}
+
+quantidade_nulos <- bfd_arrival_numerical %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "coluna", values_to = "qtd_na") %>%
+  arrange(desc(qtd_na))
+
+quantidade_nulos
+```
+
+```{r bfd_arrival_numerical_na_omit}
+
+bfd_arrival_numerical <- na.omit(bfd_arrival_numerical)
+
+bfd_arrival_numerical
+```
+
+
+## Remoção de outliers
+
+```{r bfd_arrival_numerical_outliers_removal}
+
+out_obj <- outliers_boxplot(alpha = 3) # class for outlier analysis
+out_obj <- fit(out_obj, bfd_arrival_numerical) # computing boundaries
+bfd_arrival_numerical <- transform(out_obj, bfd_arrival_numerical) # returning cleaned dataset
+
+# inspection of cleaned dataset
+bfd_arrival_numerical
+```
+
+## Normalização dos dados
+
+```{r bfd_arrival_numerical_normalization}
+
+# Z-Score
+# Adjust values to 0 (mean), 1 (variance).
+
+norm <- zscore()
+norm <- fit(norm, bfd_arrival_numerical)
+bfd_arrival_numerical <- transform(norm, bfd_arrival_numerical)
+bfd_arrival_numerical
+```
+
+## Busca do melhor K do Kmeans
+
+```{r bfd_arrival_numerical_clustering}
+
+set.seed(123)
+
+tempo_exec <- system.time({
+
+  # Seu dataset numérico já tratado
+  dados <- bfd_arrival_numerical
+
+  # Faixa de valores de k a testar
+  k_values <- 1:8
+  wcss_dal <- numeric(length(k_values))
+  wcss_trad <- numeric(length(k_values))
+
+  # Loop para calcular o WCSS para cada k
+  for (i in seq_along(k_values)) {
+    k <- k_values[i]
+
+    # daltoolbox
+    model <- cluster_kmeans(k = k)
+    clu <- cluster(model, dados)
+    wcss_dal[i] <- attr(clu, "metric")  # métrica da daltoolbox
+
+    # tradicional (stats::kmeans)
+    km <- kmeans(dados, centers = k)
+    wcss_trad[i] <- km$tot.withinss       # WCSS clássico
+  }
+
+  # Plots lado a lado
+  par(mfrow=c(1,2)) # 2 gráficos na mesma janela
+
+  plot(k_values, wcss_dal, type = "b", pch = 19, frame = FALSE,
+       xlab = "Número de clusters (k)", ylab = "Métrica daltoolbox",
+       main = "daltoolbox (crescente)")
+
+  plot(k_values, wcss_trad, type = "b", pch = 19, frame = FALSE,
+       xlab = "Número de clusters (k)", ylab = "WCSS tradicional",
+       main = "stats::kmeans (decrescente)")
+
+  # Mostrar os valores
+  print("Métrica daltoolbox:")
+  print(wcss_dal)
+  print("WCSS tradicional:")
+  print(wcss_trad)
+
+})
+
+# Tempo de execução
+print(paste("Tempo de execução:", tempo_exec["elapsed"], "segundos"))
+```
+
+## Criação do Dataframe final para análise dos dados de partida
+
+```{r bfd_arrival_numerical_clustered}
+
+set.seed(123)
+
+# Definir o modelo k-means com k=4, visto que foi o melhor k definido
+model <- cluster_kmeans(k = 4)
+
+# Rodar o clustering nos seus dados numéricos
+clu <- cluster(model, bfd_arrival_numerical)
+
+# Reverte a normalização dos dados para o estado original
+bfd_arrival_numerical <- inverse_transform(norm, bfd_arrival_numerical)
+
+# Selecionar as linhas do dataset original
+bfd_arrival_final <- bfd[rownames(bfd_arrival_numerical), c("arrival", "depart", "route", "company", "flight", "di", "type", "real_flight_length", "expected_flight_length", "arrival_day_period", "expected_arrival", "real_arrival", "status_arrival", "delay_arrival", "arrival_air_temperature", "arrival_dew_point", "arrival_relative_humidity", "arrival_wind_direction", "arrival_sky_coverage", "arrival_pressure", "arrival_visibility", "arrival_apparent_temperature", "arrival_wind_speed_scale", "arrival_wind_direction_cat")]
+
+# Adicionar a coluna de clusters
+bfd_arrival_final$clusters <- clu
+
+bfd_arrival_final
+```
+```{r save_results}
+
+# Definir caminho do arquivo
+caminho_saida <- "/home/matheus_melo/data-mining/T2/clustering_arrival/bfd_arrival_final.RData"
+
+# Salvar o objeto bfd_depart_final
+save(bfd_arrival_final, file = caminho_saida)
+
+# Mensagem de confirmação
+cat("Arquivo RData salvo em:", caminho_saida, "\n")
+
+```
+
