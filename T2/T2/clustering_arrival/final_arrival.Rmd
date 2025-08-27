@@ -1,0 +1,436 @@
+---
+title: "Análise de Clusters - Relatório"
+author: "Seu Nome"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# 0. Pacotes
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library(patchwork)
+library(ggradar)
+library(scales)
+
+setwd("~clustering_arrival")  # Ajuste conforme necessário
+obj_name <- load("bfd_arrival_final.RData")
+dados <- get(obj_name)
+
+names(dados) # Verifica as colunas disponíveis
+str(dados)   # Verifica a estrutura dos dados
+
+if ("clusters" %in% names(dados)) {
+  dados <- dados %>% mutate(clusters = as.factor(clusters))
+} else {
+  stop("Coluna de agrupamento não encontrada. Verifique o nome no objeto 'dados'.")
+}
+```
+
+# 1. Análise Exploratória
+contagem <- dados %>% count(clusters, name = "n_registros")
+contagem
+
+grafico_tamanho <- ggplot(contagem, aes(x = clusters, y = n_registros, fill = clusters)) +
+  geom_col() +
+  labs(title = "Quantidade de registros por Cluster",
+       x = "Cluster", y = "Número de registros", fill = "Cluster") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+grafico_tamanho
+
+# 4. Estatísticas descritivas por cluster
+# Médias
+resumo_media <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(mean(.x, na.rm = TRUE), 2), .names = "{.col}_mean"),
+            .groups = "drop")
+resumo_media
+
+# Desvio-padrão
+resumo_sd <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(sd(.x, na.rm = TRUE), 2), .names = "{.col}_sd"),
+            .groups = "drop")
+resumo_sd
+# Medianas
+resumo_median <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(median(.x, na.rm = TRUE), 2), .names = "{.col}_median"),
+            .groups = "drop")
+resumo_median
+
+# 5. Distribuição das variáveis numéricas por cluster
+variaveis_numericas <- names(dados)[sapply(dados, is.numeric)]
+for (var in variaveis_numericas) {
+  p <- ggplot(dados, aes(x = clusters, y = .data[[var]], fill = clusters)) +
+    geom_boxplot() +
+    labs(x = "Cluster", y = var, title = paste("Distribuição de", var, "por cluster")) +
+    theme_minimal()
+  print(p)
+}
+
+
+# 6. Heatmaps de métricas agrupadas
+vars_modelo <- c(
+  "delay_arrival",
+  "real_flight_length",
+  "arrival_air_temperature",
+  "arrival_dew_point",
+  "arrival_relative_humidity",
+  "arrival_wind_direction",
+  "arrival_pressure",
+  "arrival_visibility",
+  "arrival_apparent_temperature"
+)
+
+calc_metricas <- function(df, func, sufixo) {
+  df %>%
+    group_by(clusters) %>%
+    summarise(across(all_of(vars_modelo),
+                     ~ round(func(.x, na.rm = TRUE), 2),
+                     .names = "{.col}")) %>%
+    pivot_longer(-clusters, names_to = "variavel", values_to = sufixo)
+}
+
+medias   <- calc_metricas(dados, mean,   "media")
+medianas <- calc_metricas(dados, median, "mediana")
+sds      <- calc_metricas(dados, sd,     "desvio_padrao")
+
+# 7 Perfil dos clusters
+perfil_clusters <- medias %>%
+  left_join(medianas, by = c("clusters", "variavel")) %>%
+  left_join(sds,      by = c("clusters", "variavel")) %>%
+  arrange(variavel, clusters)
+
+ordem_var <- perfil_clusters %>%
+  group_by(variavel) %>%
+  summarise(spread = max(media, na.rm = TRUE) - min(media, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(spread)) %>%
+  pull(variavel)
+
+# 8 Rotulos e afins
+pc_long <- perfil_clusters %>%
+  mutate(
+    variavel = factor(variavel, levels = ordem_var),
+    clusters = as.factor(clusters)
+  ) %>%
+  pivot_longer(
+    cols = c(media, mediana, desvio_padrao),
+    names_to = "metrica", values_to = "valor"
+  )
+
+rotulos <- c(
+  media         = "Média",
+  mediana       = "Mediana",
+  desvio_padrao = "Desvio Padrão"
+)
+
+plots <- lapply(names(rotulos), function(m) {
+  df_plot <- pc_long %>%
+    filter(metrica == m) %>%
+    group_by(variavel) %>%
+    mutate(valor_norm = rescale(valor, to = c(0, 1))) %>%
+    ungroup()
+  
+  ggplot(df_plot, aes(x = clusters, y = variavel, fill = valor_norm)) +
+    geom_tile(color = "grey90") +
+    geom_text(aes(label = format(round(valor, 2), nsmall = 2)),
+              size = 3.5, color = "white", fontface = "bold") +
+    scale_fill_viridis_c(
+      option = "C", begin = 0.10, end = 0.80,
+      name = paste(rotulos[m], "(normalizado)"),
+      labels = scales::percent_format(accuracy = 1)
+    ) +
+    labs(title = paste("Heatmap de", rotulos[m], "por variável e cluster"),
+         x = "Cluster", y = "Variável") +
+    theme_bw(base_size = 12) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+})
+plots
+# 9 Radar Plots normalizados por variável
+cores_clusters <- scales::hue_pal()(length(levels(dados$clusters)))
+
+plot_radar_sem_norm <- function(df_long, titulo, col_valor, cores) {
+  df_wide <- df_long %>%
+    pivot_wider(names_from = variavel, values_from = all_of(col_valor)) %>%
+    arrange(clusters)
+  
+  df_wide[, -1] <- lapply(df_wide[, -1], function(x) suppressWarnings(as.numeric(as.character(x))))
+  df_wide <- df_wide[, c(TRUE, colSums(!is.na(df_wide[, -1])) > 0)]
+  df_wide[is.na(df_wide)] <- 0
+  
+  # Normaliza cada coluna entre 0 e 1
+  df_scaled <- df_wide
+  for (col in 2:ncol(df_scaled)) {
+    min_val <- min(df_scaled[[col]], na.rm = TRUE)
+    max_val <- max(df_scaled[[col]], na.rm = TRUE)
+    df_scaled[[col]] <- if (max_val > min_val) {
+      (df_scaled[[col]] - min_val) / (max_val - min_val)
+    } else { 0 }
+  }
+  
+  ggradar(
+    df_scaled,
+    grid.min  = 0, grid.mid = 0.5, grid.max = 1,
+    values.radar = c("0", "0.5", "1"),
+    group.point.size = 3, group.line.width = 1,
+    background.circle.colour = "white",
+    gridline.mid.colour = "grey80",
+    axis.label.size = 3.5,
+    legend.text.size = 10,
+    plot.title = titulo
+  ) +
+    scale_color_manual(values = cores) +
+    scale_fill_manual(values = cores)
+}
+
+plot_radar_sem_norm(medias,   "Radar - Médias", "media", cores_clusters)
+plot_radar_sem---
+title: "Análise de Clusters - Relatório"
+author: "Seu Nome"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# 0. Pacotes e Dados
+
+```{r setup, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(viridis)
+library(patchwork)
+library(ggradar)
+library(scales)
+```
+
+```{r dados}
+setwd("~clustering_arrival")  # Ajuste conforme necessário
+obj_name <- load("bfd_arrival_final.RData")
+dados <- get(obj_name)
+```
+
+```{r estrutura_dados}
+names(dados) # Verifica as colunas disponíveis
+str(dados)   # Verifica a estrutura dos dados
+
+if ("clusters" %in% names(dados)) {
+  dados <- dados %>% mutate(clusters = as.factor(clusters))
+} else {
+  stop("Coluna de agrupamento não encontrada. Verifique o nome no objeto 'dados'.")
+}
+```
+
+# 1. Análise Exploratória
+
+```{r contagem_clusters}
+contagem <- dados %>% count(clusters, name = "n_registros")
+contagem
+```
+
+```{r grafico_tamanho}
+grafico_tamanho <- ggplot(contagem, aes(x = clusters, y = n_registros, fill = clusters)) +
+  geom_col() +
+  labs(title = "Quantidade de registros por Cluster",
+       x = "Cluster", y = "Número de registros", fill = "Cluster") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+print(grafico_tamanho)
+```
+
+# 2. Estatísticas descritivas por cluster
+
+```{r resumo_media}
+resumo_media <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(mean(.x, na.rm = TRUE), 2), .names = "{.col}_mean"),
+            .groups = "drop")
+resumo_media
+```
+
+```{r resumo_sd}
+resumo_sd <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(sd(.x, na.rm = TRUE), 2), .names = "{.col}_sd"),
+            .groups = "drop")
+resumo_sd
+```
+
+```{r resumo_median}
+resumo_median <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(where(is.numeric), ~ round(median(.x, na.rm = TRUE), 2), .names = "{.col}_median"),
+            .groups = "drop")
+resumo_median
+```
+
+# 3. Distribuição das variáveis numéricas por cluster
+
+```{r boxplots_numericas}
+variaveis_numericas <- names(dados)[sapply(dados, is.numeric)]
+for (var in variaveis_numericas) {
+  p <- ggplot(dados, aes(x = clusters, y = .data[[var]], fill = clusters)) +
+    geom_boxplot() +
+    labs(x = "Cluster", y = var, title = paste("Distribuição de", var, "por cluster")) +
+    theme_minimal()
+  print(p)
+}
+```
+
+# 4. Heatmaps de métricas agrupadas
+
+```{r heatmaps_metricas}
+vars_modelo <- c(
+  "delay_arrival",
+  "real_flight_length",
+  "arrival_air_temperature",
+  "arrival_dew_point",
+  "arrival_relative_humidity",
+  "arrival_wind_direction",
+  "arrival_pressure",
+  "arrival_visibility",
+  "arrival_apparent_temperature"
+)
+
+calc_metricas <- function(df, func, sufixo) {
+  df %>%
+    group_by(clusters) %>%
+    summarise(across(all_of(vars_modelo),
+                     ~ round(func(.x, na.rm = TRUE), 2),
+                     .names = "{.col}")) %>%
+    pivot_longer(-clusters, names_to = "variavel", values_to = sufixo)
+}
+
+medias   <- calc_metricas(dados, mean,   "media")
+medianas <- calc_metricas(dados, median, "mediana")
+sds      <- calc_metricas(dados, sd,     "desvio_padrao")
+
+perfil_clusters <- medias %>%
+  left_join(medianas, by = c("clusters", "variavel")) %>%
+  left_join(sds,      by = c("clusters", "variavel")) %>%
+  arrange(variavel, clusters)
+
+ordem_var <- perfil_clusters %>%
+  group_by(variavel) %>%
+  summarise(spread = max(media, na.rm = TRUE) - min(media, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(spread)) %>%
+  pull(variavel)
+
+pc_long <- perfil_clusters %>%
+  mutate(
+    variavel = factor(variavel, levels = ordem_var),
+    clusters = as.factor(clusters)
+  ) %>%
+  pivot_longer(
+    cols = c(media, mediana, desvio_padrao),
+    names_to = "metrica", values_to = "valor"
+  )
+
+rotulos <- c(
+  media         = "Média",
+  mediana       = "Mediana",
+  desvio_padrao = "Desvio Padrão"
+)
+
+plots <- lapply(names(rotulos), function(m) {
+  df_plot <- pc_long %>%
+    filter(metrica == m) %>%
+    group_by(variavel) %>%
+    mutate(valor_norm = rescale(valor, to = c(0, 1))) %>%
+    ungroup()
+  
+  p <- ggplot(df_plot, aes(x = clusters, y = variavel, fill = valor_norm)) +
+    geom_tile(color = "grey90") +
+    geom_text(aes(label = format(round(valor, 2), nsmall = 2)),
+              size = 3.5, color = "white", fontface = "bold") +
+    scale_fill_viridis_c(
+      option = "C", begin = 0.10, end = 0.80,
+      name = paste(rotulos[m], "(normalizado)"),
+      labels = scales::percent_format(accuracy = 1)
+    ) +
+    labs(title = paste("Heatmap de", rotulos[m], "por variável e cluster"),
+         x = "Cluster", y = "Variável") +
+    theme_bw(base_size = 12) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  print(p)
+})
+```
+
+# 5. Radar Plots normalizados por variável
+
+```{r radar_plots}
+cores_clusters <- scales::hue_pal()(length(levels(dados$clusters)))
+
+plot_radar_sem_norm <- function(df_long, titulo, col_valor, cores) {
+  df_wide <- df_long %>%
+    pivot_wider(names_from = variavel, values_from = all_of(col_valor)) %>%
+    arrange(clusters)
+  
+  df_wide[, -1] <- lapply(df_wide[, -1], function(x) suppressWarnings(as.numeric(as.character(x))))
+  df_wide <- df_wide[, c(TRUE, colSums(!is.na(df_wide[, -1])) > 0)]
+  df_wide[is.na(df_wide)] <- 0
+  
+  # Normaliza cada coluna entre 0 e 1
+  df_scaled <- df_wide
+  for (col in 2:ncol(df_scaled)) {
+    min_val <- min(df_scaled[[col]], na.rm = TRUE)
+    max_val <- max(df_scaled[[col]], na.rm = TRUE)
+    df_scaled[[col]] <- if (max_val > min_val) {
+      (df_scaled[[col]] - min_val) / (max_val - min_val)
+    } else { 0 }
+  }
+  
+  p <- ggradar(
+    df_scaled,
+    grid.min  = 0, grid.mid = 0.5, grid.max = 1,
+    values.radar = c("0", "0.5", "1"),
+    group.point.size = 3, group.line.width = 1,
+    background.circle.colour = "white",
+    gridline.mid.colour = "grey80",
+    axis.label.size = 3.5,
+    legend.text.size = 10,
+    plot.title = titulo
+  ) +
+    scale_color_manual(values = cores) +
+    scale_fill_manual(values = cores)
+  print(p)
+}
+
+plot_radar_sem_norm(medias,   "Radar - Médias", "media", cores_clusters)
+plot_radar_sem_norm(medianas, "Radar - Medianas", "mediana", cores_clusters)
+plot_radar_sem_norm(sds,      "Radar - Desvio Padrão", "desvio_padrao", cores_clusters)
+```
+
+# 6. Perfil das variáveis categóricas
+
+```{r perfil_categoricas}
+categoricas <- c("arrival_sky_coverage",
+                 "arrival_wind_speed_scale",
+                 "arrival_wind_direction_cat")
+
+perfil_cat <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(all_of(categoricas),
+                   ~ list(table(.x)), .names = "{.col}"))
+
+perfil_cat
+```_norm(medianas, "Radar - Medianas", "mediana", cores_clusters)
+plot_radar_sem_norm(sds,      "Radar - Desvio Padrão", "desvio_padrao", cores_clusters)
+
+
+# 10 Perfil das variáveis categóricas
+categoricas <- c("arrival_sky_coverage",
+                 "arrival_wind_speed_scale",
+                 "arrival_wind_direction_cat")
+
+perfil_cat <- dados %>%
+  group_by(clusters) %>%
+  summarise(across(all_of(categoricas),
+                   ~ list(table(.x)), .names = "{.col}"))
+
+perfil_cat
+---
