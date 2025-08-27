@@ -1,0 +1,130 @@
+---
+title: "Análise cluster depart"
+output: html_document
+date: "2025-08-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+load("T2/T2/clustering_depart/bfd_depart_final.RData")
+```
+
+```{r}
+df <- bfd_depart_final
+table(df$clusters)
+```
+
+```{r}
+analise.numericas <- df %>% group_by(clusters) %>% 
+  summarise(mean_delay_depart = mean(delay_depart),
+            mean_depart_air_temperature = mean(depart_air_temperature),
+            mean_depart_dew_point = mean(depart_dew_point),
+            mean_depart_relative_humidity = mean(depart_relative_humidity),
+            mean_depart_wind_direction = mean(depart_wind_direction),
+            mean_depart_pressure = mean(depart_pressure),
+            mean_depart_visibility = mean(depart_visibility),
+            mean_depart_apparent_temperature = mean(depart_apparent_temperature),
+            )
+```
+
+```{r}
+ggplot(df, aes(x = as.factor(clusters), y = delay_depart, fill = as.factor(clusters))) +
+  geom_boxplot() +
+  labs(title = "Distribuição do Atraso na Partida por Cluster",
+       x = "Cluster",
+       y = "Atraso na Partida (minutos)")
+```
+
+```{r}
+ggplot(df, aes(x = as.factor(clusters), y = depart_relative_humidity, fill = as.factor(clusters))) +
+  geom_boxplot() +
+  labs(title = "Distribuição da humidade relativa por Cluster",
+       x = "Cluster",
+       y = "Humidade relativa")
+```
+
+```{r}
+ggplot(df, aes(x = as.factor(clusters), y = depart_pressure, fill = as.factor(clusters))) +
+  geom_boxplot() +
+  labs(title = "Distribuição da pressão por Cluster",
+       x = "Cluster",
+       y = "Pressão")
+```
+
+```{r}
+ggplot(df, aes(x = as.factor(clusters), y = depart_wind_direction, fill = as.factor(clusters))) +
+  geom_boxplot() +
+  labs(title = "Distribuição da direção do vento por Cluster",
+       x = "Cluster",
+       y = "Direção do vento")
+```
+
+```{r}
+# install.packages("scales")
+# install.packages("devtools")
+# devtools::install_github("ricardo-bion/ggradar")
+
+library(dplyr)
+library(scales)
+library(ggradar)
+
+analise_medias <- df %>%
+  group_by(clusters) %>%
+  summarise(
+    Atraso_Partida = mean(delay_depart, na.rm = TRUE),
+    Temperatura = mean(depart_air_temperature, na.rm = TRUE),
+    Umidade_Relativa = mean(depart_relative_humidity, na.rm = TRUE),
+    Direcao_Vento = mean(depart_wind_direction, na.rm = TRUE),
+    Pressao = mean(depart_pressure, na.rm = TRUE),
+    Visibilidade = mean(depart_visibility, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+medias_normalizadas <- analise_medias %>%
+  mutate_at(vars(-clusters), rescale)
+
+ggradar(medias_normalizadas,
+        grid.min = 0, grid.mid = 0.5, grid.max = 1,
+        axis.label.size = 4,
+        legend.title = "Clusters",
+        legend.text.size = 10) +
+  labs(title = "Perfil dos Clusters de Voo") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+table(df[df$clusters == 1,]$company)
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+df_numerico <- df %>%
+  select(delay_depart, depart_air_temperature, depart_dew_point,
+         depart_relative_humidity, depart_wind_direction, depart_pressure,
+         depart_visibility, depart_apparent_temperature) %>%
+  na.omit()
+
+pca_resultado <- prcomp(df_numerico, center = TRUE, scale. = TRUE)
+summary(pca_resultado)
+
+df_pca <- as.data.frame(pca_resultado$x[, 1:2]) 
+
+df_pca$clusters <- df %>% pull(clusters)
+
+ggplot(df_pca, aes(x = PC1, y = PC2, color = as.factor(clusters))) +
+  geom_point(alpha = 0.6) + 
+  labs(title = "Visualização dos Clusters via PCA",
+       x = "Componente Principal 1",
+       y = "Componente Principal 2",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+

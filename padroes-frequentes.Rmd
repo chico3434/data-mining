@@ -1,34 +1,30 @@
-library(daltoolbox)
+---
+title: "Padrões frequentes"
+output: html_document
+date: "2025-08-25"
+---
 
-load("bfd_2022.rdata")
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-model <- cluster_dbscan(minPts = 3)
-
-numericas <- bfd[,c(17:20,27:31,33:35,38:42,44:46)]
-numericas <- na.omit(numericas)
-model <- fit(model, numericas)
-clu <- cluster(model, numericas)
-table(clu)
- clu
-df <- data.frame(cluster = clu, numericas)
-# problema do dbscan: Fez mais de 3 mil clusters.
-model <- clu_tune(cluster_kmeans(k = 0),  ranges = list(k = 1:10))
-model <- fit(model, numericas)
-model$k
-
-if (!require("arules")) install.packages("arules")
-if (!require("arulesViz")) install.packages("arulesViz")
-if (!require("dplyr")) install.packages("dplyr")
-
+```{r}
 library(arules)
 library(arulesViz)
 library(dplyr)
 
+load("bfd_2022.rdata")
+```
+
+```{r}
 voos_df <- bfd
 str(voos_df)
 
+# Obter um resumo estatístico das variáveis
 summary(voos_df)
 
+# Verificar o número de valores únicos (cardinalidade) para cada variável categórica
+# Supondo que as variáveis de interesse já foram selecionadas
 colunas_categoricas <- c("arrival", "depart", "route", "company", "depart_day_period", 
                          "arrival_day_period", "status_depart", "status_arrival", 
                          "depart_sky_coverage", "depart_wind_speed_scale", 
@@ -42,22 +38,37 @@ colunas_analise <- c("arrival", "depart", "route", "company", "depart_day_period
                      "arrival_wind_speed_scale", "arrival_wind_direction_cat")
 
 sapply(voos_df[colunas_analise], function(x) length(unique(x)))
+# Supondo que voos_df contém os dados e colunas_categoricas foi definido acima
 
+# Selecionar apenas as colunas categóricas para a análise
 voos_para_trans <- voos_df[colunas_analise]
 
+# Converter todas as colunas para o tipo fator, que é necessário para a coerção
 voos_para_trans <- voos_para_trans %>%
   mutate(across(everything(), as.factor))
 
+# Converter o data frame para o formato de transações
+# Cada linha se torna uma transação, e cada combinação coluna=valor se torna um item
 voos_trans <- as(voos_para_trans, "transactions")
-
+# Exibir um resumo do objeto de transações
+# Mostra o número de transações, itens, e a densidade da matriz
 summary(voos_trans)
 
+# Inspecionar as primeiras transações para ver como os itens estão representados
 inspect(head(voos_trans, 5))
 
+# Plotar a frequência dos itens mais comuns
+# 'topN' especifica quantos dos itens mais frequentes mostrar
+# 'type="absolute"' mostra a contagem de voos, 'relative' mostra a proporção
 itemFrequencyPlot(voos_trans, topN = 20, type = "absolute", main = "Frequência Absoluta dos Itens Mais Comuns")
 
+# Exemplo de uma primeira execução exploratória do Apriori
+# Nota: Com um suporte de 0.01, pode levar algum tempo e gerar muitas regras.
 regras_iniciais <- apriori(voos_trans, 
                            parameter = list(supp = 0.01, conf = 0.8, maxlen = 5))
+# Mineração focada em encontrar precursores de chegadas atrasadas
+# 'rhs' especifica o consequente desejado
+# 'default="lhs"' permite que qualquer outra combinação de itens apareça no antecedente
 regras_atraso <- apriori(voos_trans,
                          parameter = list(supp = 0.005, conf = 0.5, minlen = 2),
                          appearance = list(rhs = c("status_depart=Atraso 30-60",
@@ -68,27 +79,36 @@ regras_atraso <- apriori(voos_trans,
                                                    "status_depart=Pontual"),
                                            default = "lhs"))
 
+# O parâmetro minlen=2 é usado para evitar regras triviais com um antecedente vazio, como {} => {status_arrival=Delayed}
+
+# Resumo do conjunto de regras gerado
 summary(regras_atraso)
 
+# Inspecionar as primeiras 5 regras encontradas
 inspect(head(regras_atraso, 5))
 
+# Classificar as regras por lift em ordem decrescente para ver as associações mais fortes
 regras_atraso_classificadas <- sort(regras_atraso, by = "lift", decreasing = TRUE)
 
+# Inspecionar as 10 regras com o maior lift
 inspect(head(regras_atraso_classificadas, 10))
 
+# Identificar os índices das regras que são redundantes
 indices_redundantes <- is.redundant(regras_atraso_classificadas)
 
+# Exibir quantas regras foram marcadas como redundantes
 sum(indices_redundantes)
 
+# Criar um novo conjunto de regras removendo as redundantes
 regras_atraso_podadas <- regras_atraso_classificadas[!indices_redundantes]
 
+# Inspecionar o novo conjunto de regras, agora mais conciso
 summary(regras_atraso_podadas)
 inspect(head(regras_atraso_podadas, 10))
+```
 
-plot(regras_atraso_podadas, method = "scatter", measure = c("support", "confidence"), shading = "lift")
 
-plot(head(regras_atraso_podadas, 20), method = "graph", control = list(type = "items"))
+```{r}
 
-plot(regras_atraso_podadas, method = "grouped")
+```
 
-ruleExplorer(regras_atraso_podadas)
