@@ -5,7 +5,9 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(viridis)
-library(patchwork)  # Para juntar gráficos
+library(patchwork)
+library(ggradar)
+library(scales)
 
 # ------------------------------------------------------------
 # 1. Diretório de trabalho e dados
@@ -134,15 +136,27 @@ rotulos <- c(
   desvio_padrao = "Desvio Padrão"
 )
 
+
 plots <- lapply(names(rotulos), function(m) {
-  df_plot <- pc_long %>% filter(metrica == m)
-  p <- ggplot(df_plot, aes(x = clusters, y = variavel, fill = valor)) +
+  df_plot <- pc_long %>%
+    filter(metrica == m) %>%
+    group_by(variavel) %>%
+    mutate(valor_norm = rescale(valor, to = c(0, 1))) %>%
+    ungroup()
+  
+  p <- ggplot(df_plot, aes(x = clusters, y = variavel, fill = valor_norm)) +
     geom_tile(color = "grey90") +
     geom_text(aes(label = format(round(valor, 2), nsmall = 2)),
-              size = 3.5, color = "black", fontface = "bold") +
-    scale_fill_viridis_c(option = "C", name = rotulos[m]) +
+              size = 3.5, color = "white", fontface = "bold") +
+    scale_fill_viridis_c(
+      option = "C",
+      begin = 0.10,  # corta o roxo quase preto
+      end   = 0.80,  # corta os amarelos muito claros
+      name = paste(rotulos[m], "(normalizado)"),
+      labels = scales::percent_format(accuracy = 1)
+    ) +
     labs(
-      title = paste("Heatmap de", rotulos[m], "por variável e cluster"),
+      title = paste("Heatmap de", rotulos[m], "por variável e cluster (normalizado)"),
       x = "Cluster", y = "Variável"
     ) +
     theme_bw(base_size = 12) +
@@ -153,9 +167,68 @@ plots <- lapply(names(rotulos), function(m) {
       panel.grid.major = element_line(color = "grey85"),
       panel.grid.minor = element_blank()
     )
-  print(p) # Exibe o heatmap
+  
+  print(p)
   return(p)
 })
+
+
+#!nOvo 
+# ------------------------------------------------------------
+# Função para gerar Radar Plot sem normalização global de escala
+# ------------------------------------------------------------
+# Paleta fixa — mesma usada nos outros plots
+# Aqui usei o scale_fill_viridis_d como exemplo; substitua pelas cores exatas que preferir
+cores_clusters <- scales::hue_pal()(length(levels(dados$clusters)))
+plot_radar_sem_norm <- function(df_long, titulo, col_valor, cores) {
+  
+  if (!col_valor %in% names(df_long)) {
+    stop(paste0("Coluna '", col_valor, "' não encontrada em df_long."))
+  }
+  
+  df_wide <- df_long %>%
+    pivot_wider(names_from = variavel, values_from = all_of(col_valor)) %>%
+    arrange(clusters)
+  
+  df_wide[, -1] <- lapply(df_wide[, -1], function(x) suppressWarnings(as.numeric(as.character(x))))
+  df_wide <- df_wide[, c(TRUE, colSums(!is.na(df_wide[, -1])) > 0)]
+  df_wide[is.na(df_wide)] <- 0
+  
+  # Normaliza cada coluna entre 0 e 1
+  df_scaled <- df_wide
+  for (col in 2:ncol(df_scaled)) {
+    min_val <- min(df_scaled[[col]], na.rm = TRUE)
+    max_val <- max(df_scaled[[col]], na.rm = TRUE)
+    df_scaled[[col]] <- if (max_val > min_val) {
+      (df_scaled[[col]] - min_val) / (max_val - min_val)
+    } else { 0 }
+  }
+  
+  ggradar(
+    df_scaled,
+    grid.min  = 0,
+    grid.mid  = 0.5,
+    grid.max  = 1,
+    values.radar = c("0", "0.5", "1"),
+    group.point.size = 3,
+    group.line.width = 1,
+    background.circle.colour = "white",
+    gridline.mid.colour = "grey80",
+    axis.label.size = 3.5,
+    legend.text.size = 10,
+    plot.title = titulo
+  ) +
+    scale_color_manual(values = cores) +   # Aplica as cores aos contornos
+    scale_fill_manual(values = cores)      # Aplica as cores às áreas
+}
+
+# Chamada mantendo cores iguais às dos demais gráficos
+print(plot_radar_sem_norm(medias,   "Radar - Médias (Normalizado por variável)", "media", cores_clusters))
+print(plot_radar_sem_norm(medianas, "Radar - Medianas (Normalizado por variável)", "mediana", cores_clusters))
+print(plot_radar_sem_norm(sds,      "Radar - Desvio Padrão (Normalizado por variável)", "desvio_padrao", cores_clusters))
+
+
+#!
 names(plots) <- names(rotulos)
 
 # ------------------------------------------------------------
