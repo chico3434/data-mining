@@ -1,0 +1,155 @@
+---
+title: "Trabalho 3"
+output: html_document
+date: "2025-08-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(daltoolbox)
+```
+
+## Trabalho 3. 
+
+```{r}
+load("bfd_2022.rdata")
+```
+
+```{r}
+codigo_sdu <- "SBRJ"
+codigo_galeao <- "SBGL"
+```
+
+```{r}
+voos_galeao <- bfd %>% filter(depart == codigo_galeao)
+```
+
+```{r}
+colnames(voos_galeao)[str_detect(colnames(voos_galeao), "depart")]
+```
+
+
+```{r}
+variaveis <- c("route", "company", "depart", "depart_day_period", "expected_depart", "real_depart", "status_depart", "delay_depart", "outlier_depart_delay", "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", "depart_pressure", "depart_visibility", "depart_apparent_temperature", "depart_wind_speed_scale", "depart_wind_direction_cat")
+
+variaveis_modelo <- c("route", "company", "depart", "depart_day_period","delay_depart", "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", "depart_pressure", "depart_visibility", "depart_apparent_temperature", "depart_wind_speed_scale", "depart_wind_direction_cat")
+
+voos_galeao_modelo <- voos_galeao[,variaveis_modelo]
+```
+
+
+```{r}
+voos_galeao_modelo <- na.omit(voos_galeao_modelo)
+```
+
+```{r}
+# preparing dataset for random sampling
+set.seed(123)
+sr <- sample_random()
+sr <- train_test(sr, voos_galeao_modelo)
+galeao_train <- sr$train
+galeao_test <- sr$test
+```
+
+### Árvore de decisão  
+
+
+```{r}
+# Training
+model <- reg_dtree("delay_depart")
+model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train)
+galeao_train_predictand <- galeao_train[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test)
+galeao_test_predictand <- galeao_test[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+### KNN  
+
+
+```{r}
+# Training
+model <- reg_knn("delay_depart", k=5)
+model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+#train_prediction <- predict(model, galeao_train)
+#galeao_train_predictand <- galeao_train[,"delay_depart"]
+#train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+#print(train_eval$metrics)
+```
+
+```{r}
+#test_prediction <- predict(model, galeao_test)
+#galeao_test_predictand <- galeao_test[,"delay_depart"]
+#test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+#print(test_eval$metrics)
+```
+
+### SVM  
+
+
+```{r}
+# Training
+#model <- reg_svm("delay_depart", epsilon=0.2, cost=40.000)
+#model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+#train_prediction <- predict(model, galeao_train)
+#galeao_train_predictand <- galeao_train[,"delay_depart"]
+#train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+#print(train_eval$metrics)
+```
+
+```{r}
+#test_prediction <- predict(model, galeao_test)
+#galeao_test_predictand <- galeao_test[,"delay_depart"]
+#test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+#print(test_eval$metrics)
+```
+
+### Random Forest  
+
+
+```{r}
+# Training
+model <- reg_rf("delay_depart", mtry=7,ntree=30)
+model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train)
+galeao_train_predictand <- galeao_train[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test)
+galeao_test_predictand <- galeao_test[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+
