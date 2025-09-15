@@ -1,0 +1,238 @@
+---
+title: "Trabalho 3"
+output: html_document
+date: "2025-08-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(daltoolbox)
+```
+
+## Trabalho 3. 
+
+```{r}
+load("bfd_2022.rdata")
+```
+
+```{r}
+codigo_sdu <- "SBRJ"
+codigo_galeao <- "SBGL"
+```
+
+```{r}
+voos_galeao <- bfd %>% filter(depart == codigo_galeao)
+```
+
+```{r}
+voos_galeao <- voos_galeao %>% filter(!outlier_depart_delay) %>% filter(!outlier_arrival_delay) %>% filter(!outlier_expected_flight_consistency) %>% filter(!outlier_real_flight_consistency) %>% filter(!outlier_expected_flight_length) %>% filter(!outlier_real_flight_length)
+```
+
+
+```{r}
+voos_galeao$mes <- factor(month(voos_galeao$expected_depart))
+voos_galeao$dia_semana <- factor(weekdays(voos_galeao$expected_depart))
+```
+
+```{r}
+percentual_nulos <- voos_galeao %>%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "coluna",
+    values_to = "perc_na"
+  ) %>%
+  arrange(desc(perc_na))
+percentual_nulos$perc_na <- round(percentual_nulos$perc_na,2)
+percentual_nulos
+```
+
+
+```{r}
+variaveis <- c("route", "company", "depart", "depart_day_period", "expected_depart", "real_depart", "status_depart", "delay_depart", "outlier_depart_delay", "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", "depart_pressure", "depart_visibility", "depart_apparent_temperature", "depart_wind_speed_scale", "depart_wind_direction_cat")
+
+variaveis_modelo <- c("route", "company","depart_day_period","delay_depart","mes", "dia_semana", "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", "depart_wind_direction", "depart_wind_speed", "depart_pressure", "depart_apparent_temperature", "depart_wind_direction_cat")
+
+voos_galeao_modelo <- voos_galeao[,variaveis_modelo]
+```
+
+
+```{r}
+voos_galeao_modelo <- na.omit(voos_galeao_modelo)
+```
+
+```{r}
+out_obj <- outliers_boxplot() # class for outlier analysis
+out_obj <- fit(out_obj, voos_galeao_modelo) # computing boundaries
+voos_galeao_modelo <- transform(out_obj, voos_galeao_modelo)
+```
+
+
+```{r}
+voos_galeao_modelo_one_hot <- voos_galeao_modelo
+
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("depart_day_period"),voos_galeao_modelo))
+
+#voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("route"),voos_galeao_modelo))
+
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("company"),voos_galeao_modelo))
+
+#voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("depart_sky_coverage"),voos_galeao_modelo))
+
+#voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("depart_wind_speed_scale"),voos_galeao_modelo))
+
+#voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("depart_wind_direction_cat"),voos_galeao_modelo))
+
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("mes"),voos_galeao_modelo))
+
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot %>% cbind(transform(categ_mapping("dia_semana"),voos_galeao_modelo))
+
+categoricas <- c("depart", "depart_day_period", "route", "company", "depart_sky_coverage", "depart_wind_speed_scale", "depart_wind_direction_cat", "mes", "dia_semana")
+
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot[,colnames(voos_galeao_modelo_one_hot)[which(!(colnames(voos_galeao_modelo_one_hot) %in% categoricas))]]
+```
+
+```{r}
+significant_cols <- c()
+for(col in colnames(voos_galeao_modelo_one_hot)) {
+  if(sum(abs(voos_galeao_modelo_one_hot[,col])) > 100) {
+    significant_cols <- significant_cols %>% c(col)
+  }
+}
+length(colnames(voos_galeao_modelo_one_hot))
+voos_galeao_modelo_one_hot <- voos_galeao_modelo_one_hot[,significant_cols]
+length(colnames(voos_galeao_modelo_one_hot))
+```
+
+
+```{r}
+# preparing dataset for random sampling
+set.seed(123)
+sr <- sample_random()
+sr <- train_test(sr, voos_galeao_modelo)
+galeao_train <- sr$train
+galeao_test <- sr$test
+```
+
+```{r}
+set.seed(123)
+sr <- sample_random()
+sr <- train_test(sr, voos_galeao_modelo_one_hot)
+galeao_train_one_hot <- sr$train
+galeao_test_one_hot <- sr$test
+```
+
+```{r}
+var <- c("delay_depart", "company", "depart_day_period", "depart_pressure", "depart_apparent_temperature", "mes", "dia_semana")
+
+```
+
+```{r}
+train_filtred <- galeao_train[,var]
+fit <- lm(delay_depart ~ ., data = train_filtred)
+summary(fit)
+```
+
+
+### Árvore de decisão  
+
+
+```{r}
+# Training
+model <- reg_dtree("delay_depart")
+model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train)
+galeao_train_predictand <- galeao_train[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test)
+galeao_test_predictand <- galeao_test[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+### KNN  
+
+
+```{r}
+# Training
+model <- reg_knn("delay_depart", k=5)
+model <- fit(model, galeao_train_one_hot)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train_one_hot)
+galeao_train_predictand <- galeao_train_one_hot[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test_one_hot)
+galeao_test_predictand <- galeao_test_one_hot[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+### SVM  
+
+
+```{r}
+# Training
+model <- reg_svm("delay_depart", epsilon=0.2, cost=40.000)
+model <- fit(model, galeao_train_one_hot)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train_one_hot)
+galeao_train_predictand <- galeao_train_one_hot[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test_one_hot)
+galeao_test_predictand <- galeao_test_one_hot[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+### Random Forest  
+
+
+```{r}
+# Training
+model <- reg_rf("delay_depart", mtry=7,ntree=30)
+model <- fit(model, galeao_train)
+```
+
+```{r}
+# Model adjustment
+
+train_prediction <- predict(model, galeao_train)
+galeao_train_predictand <- galeao_train[,"delay_depart"]
+train_eval <- evaluate(model, galeao_train_predictand, train_prediction)
+print(train_eval$metrics)
+```
+
+```{r}
+test_prediction <- predict(model, galeao_test)
+galeao_test_predictand <- galeao_test[,"delay_depart"]
+test_eval <- evaluate(model, galeao_test_predictand, test_prediction)
+print(test_eval$metrics)
+```
+
+

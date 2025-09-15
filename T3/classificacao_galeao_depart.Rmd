@@ -1,0 +1,197 @@
+---
+title: "classification_galeao_depart"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(daltoolbox)
+```
+
+# Pré-processamento dos dados
+
+## Carregamento do dataframe
+
+```{r}
+load("../bfd_2022.rdata")
+
+cols <- c("expected_depart", "real_depart", "expected_arrival", "real_arrival")
+
+for (col in cols) {
+  bfd[[col]] <- as.POSIXct(bfd[[col]])
+}
+```
+
+## Filtro do Dataframe por apenas features de depart e aeroporto galeao
+
+```{r}
+bfd$mes <- factor(month(bfd$expected_depart))
+bfd$dia_semana <- factor(weekdays(bfd$expected_depart))
+
+depart_features <- c(
+  "depart", "arrival", "company", "depart_day_period", "status_depart", 
+  "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", 
+  "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", 
+  "depart_pressure", "depart_visibility", "depart_apparent_temperature", 
+  "depart_wind_speed_scale", "depart_wind_direction_cat", "mes", "dia_semana"
+)
+
+bfd_galeao <- bfd %>%
+  filter(depart == "SBGL") %>%
+  select(all_of(depart_features))
+
+```
+
+## Remoção de nulos
+
+```{r}
+
+percentual_nulos <- bfd_galeao %>%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "coluna",
+    values_to = "perc_na"
+  ) %>%
+  arrange(desc(perc_na))
+
+percentual_nulos
+```
+
+
+```{r}
+bfd_galeao <- bfd_galeao %>%
+  select(-depart_sky_coverage)      
+
+# remove linhas com qualquer NA
+bfd_galeao <- na.omit(bfd_galeao)
+```
+
+- A coluna "depart_sky_coverage" foi removido devido ao fato de apresentar uma quantidade de nulos elevada e remover as linhas dele poderia reduzir bastante o dataset.
+- Para os valores restantes que tem 4% ou menos de nulos, removi as linhas que houvesse algum nulo.
+
+## Variável-alvo
+
+```{r}
+sort(table(bfd_galeao$status_depart), decreasing = TRUE)
+```
+
+- A variável-alvo possui uma quantidade mais frequente de voos antecipados e pontuais, ou seja, baixa quantidade de atrasos.
+
+## Aplicação do One hot encoder nas variáveis categóricas
+
+```{r}
+
+# features categóricas
+cat_features <- c("company", 
+                  "depart_day_period", 
+                  "depart_wind_speed_scale", 
+                  "depart_wind_direction_cat", "mes", "dia_semana")
+
+# aplica o one-hot encoding em cada coluna categórica
+for (feat in cat_features) {
+  cm <- categ_mapping(feat)                   # cria o mapeador
+  transformed <- transform(cm, bfd_galeao)      # aplica transformação
+  
+  # remove colunas totalmente zeradas
+  transformed <- transformed[, colSums(transformed) > 0, drop = FALSE]
+  
+  # remove coluna original e adiciona as novas
+  bfd_galeao[[feat]] <- NULL
+  bfd_galeao <- cbind(bfd_galeao, transformed)
+}
+
+# dataset final atualizado
+head(bfd_galeao)
+
+```
+
+## Divisão treino e teste
+```{r}
+
+# variável alvo
+target <- "status_depart"
+bfd_galeao[[target]] <- as.factor(bfd_galeao[[target]])
+
+# remover colunas não usadas
+features <- setdiff(names(bfd_galeao), c("arrival", "depart"))
+
+# split treino/teste
+set.seed(123)
+sr <- sample_random()
+sr <- train_test(sr, bfd_galeao[, features])
+
+bfd_train <- sr$train
+bfd_test  <- sr$test
+
+# Garantir colunas consistentes entre treino e teste
+common_cols <- intersect(names(bfd_train), names(bfd_test))
+bfd_train <- bfd_train[, common_cols]
+bfd_test  <- bfd_test[, common_cols]
+
+# níveis da variável alvo
+slevels <- levels(bfd_train[[target]])
+
+# Função auxiliar para treinar e avaliar
+avaliar_modelo <- function(model, nome_modelo) {
+  train_pred <- predict(model, bfd_train)
+  train_true <- adjust_class_label(bfd_train[, target])
+  train_eval <- evaluate(model, train_true, train_pred)$metrics
+  train_eval <- train_eval[, c("accuracy", "precision", "recall", "f1")]
+  train_eval <- cbind(dataset = paste0(nome_modelo, "_treino"), train_eval)
+  
+  test_pred <- predict(model, bfd_test)
+  test_true <- adjust_class_label(bfd_test[, target])
+  test_eval <- evaluate(model, test_true, test_pred)$metrics
+  test_eval <- test_eval[, c("accuracy", "precision", "recall", "f1")]
+  test_eval <- cbind(dataset = paste0(nome_modelo, "_teste"), test_eval)
+  
+  rbind(train_eval, test_eval)
+}
+
+acuracia <- function(prev, real) {
+  return(mean(ifelse(prev == real, 1, 0)))
+}
+
+
+prev_baseline <- rep("Antecipado", length(bfd_train[, target]))
+baseline_treino <- data.frame(
+  dataset = "baseline_treino",
+  accuracy = acuracia(prev_baseline, bfd_train[, target]),
+  precision = NA,
+  recall = NA,
+  f1 = NA
+)
+
+prev_baseline <- rep("Antecipado", length(bfd_test[, target]))
+baseline_teste <- data.frame(
+  dataset = "baseline_teste",
+  accuracy = acuracia(prev_baseline, bfd_test[, target]),
+  precision = NA,
+  recall = NA,
+  f1 = NA
+)
+
+# Modelos
+
+# Naive Bayes
+nb_model <- cla_nb(target, slevels)
+nb_model <- fit(nb_model, bfd_train)
+nb_results <- avaliar_modelo(nb_model, "NB")
+
+# Random Forest
+rf_model <- cla_rf(target, slevels)
+rf_model <- fit(rf_model, bfd_train)
+rf_results <- avaliar_modelo(rf_model, "RF")
+
+# MLP
+mlp_model <- cla_mlp(target, slevels, size = 3, decay = 0.03)
+mlp_model <- fit(mlp_model, bfd_train)
+mlp_results <- avaliar_modelo(mlp_model, "MLP")
+
+# juntar todos os resultados
+results <- rbind(baseline_treino, baseline_teste, rf_results, nb_results, mlp_results)
+
+print(results)
+```

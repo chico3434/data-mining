@@ -10,9 +10,8 @@
 
 
 
-<meta name="date" content="2025-08-31" />
 
-<title>Trabalho 3</title>
+<title>Regressão Galeão</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -349,114 +348,370 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">Trabalho 3</h1>
-<h4 class="date">2025-08-31</h4>
+<h1 class="title toc-ignore">Regressão Galeão</h1>
 
 </div>
 
 
-<div id="trabalho-3." class="section level2">
-<h2>Trabalho 3.</h2>
-<pre class="r"><code>load(&quot;bfd_2022.rdata&quot;)</code></pre>
-<pre class="r"><code>codigo_sdu &lt;- &quot;SBRJ&quot;
-codigo_galeao &lt;- &quot;SBGL&quot;</code></pre>
-<pre class="r"><code>voos_galeao &lt;- bfd %&gt;% filter(depart == codigo_galeao)</code></pre>
-<pre class="r"><code>colnames(voos_galeao)[str_detect(colnames(voos_galeao), &quot;depart&quot;)]</code></pre>
-<pre><code>##  [1] &quot;depart&quot;                      &quot;depart_day_period&quot;          
-##  [3] &quot;expected_depart&quot;             &quot;real_depart&quot;                
-##  [5] &quot;status_depart&quot;               &quot;delay_depart&quot;               
-##  [7] &quot;outlier_depart_delay&quot;        &quot;depart_air_temperature&quot;     
-##  [9] &quot;depart_dew_point&quot;            &quot;depart_relative_humidity&quot;   
-## [11] &quot;depart_wind_direction&quot;       &quot;depart_wind_speed&quot;          
-## [13] &quot;depart_sky_coverage&quot;         &quot;depart_pressure&quot;            
-## [15] &quot;depart_visibility&quot;           &quot;depart_apparent_temperature&quot;
-## [17] &quot;depart_wind_speed_scale&quot;     &quot;depart_wind_direction_cat&quot;</code></pre>
-<pre class="r"><code>variaveis &lt;- c(&quot;route&quot;, &quot;company&quot;, &quot;depart&quot;, &quot;depart_day_period&quot;, &quot;expected_depart&quot;, &quot;real_depart&quot;, &quot;status_depart&quot;, &quot;delay_depart&quot;, &quot;outlier_depart_delay&quot;, &quot;depart_air_temperature&quot;, &quot;depart_dew_point&quot;, &quot;depart_relative_humidity&quot;, &quot;depart_wind_direction&quot;, &quot;depart_wind_speed&quot;, &quot;depart_sky_coverage&quot;, &quot;depart_pressure&quot;, &quot;depart_visibility&quot;, &quot;depart_apparent_temperature&quot;, &quot;depart_wind_speed_scale&quot;, &quot;depart_wind_direction_cat&quot;)
+<div id="pré-processamento-dos-dados" class="section level1">
+<h1>Pré-processamento dos dados</h1>
+<div id="carregamento-do-dataframe" class="section level2">
+<h2>Carregamento do dataframe</h2>
+<pre class="r"><code>load(&quot;../bfd_2022.rdata&quot;)
 
-variaveis_modelo &lt;- c(&quot;route&quot;, &quot;company&quot;, &quot;depart&quot;, &quot;depart_day_period&quot;,&quot;delay_depart&quot;, &quot;depart_air_temperature&quot;, &quot;depart_dew_point&quot;, &quot;depart_relative_humidity&quot;, &quot;depart_wind_direction&quot;, &quot;depart_wind_speed&quot;, &quot;depart_sky_coverage&quot;, &quot;depart_pressure&quot;, &quot;depart_visibility&quot;, &quot;depart_apparent_temperature&quot;, &quot;depart_wind_speed_scale&quot;, &quot;depart_wind_direction_cat&quot;)
+cols &lt;- c(&quot;expected_depart&quot;, &quot;real_depart&quot;, &quot;expected_arrival&quot;, &quot;real_arrival&quot;)
 
-voos_galeao_modelo &lt;- voos_galeao[,variaveis_modelo]</code></pre>
-<pre class="r"><code>voos_galeao_modelo &lt;- na.omit(voos_galeao_modelo)</code></pre>
-<pre class="r"><code># preparing dataset for random sampling
+for (col in cols) {
+  bfd[[col]] &lt;- as.POSIXct(bfd[[col]])
+}</code></pre>
+</div>
+<div id="filtro-do-dataframe-por-apenas-features-de-depart-e-aeroporto-galeao" class="section level2">
+<h2>Filtro do Dataframe por apenas features de depart e aeroporto
+galeao</h2>
+<pre class="r"><code>depart_features &lt;- c(
+  &quot;depart&quot;, &quot;arrival&quot;, &quot;company&quot;, &quot;depart_day_period&quot;, &quot;delay_depart&quot;, 
+  &quot;depart_air_temperature&quot;, &quot;depart_dew_point&quot;, &quot;depart_relative_humidity&quot;, 
+  &quot;depart_wind_direction&quot;, &quot;depart_wind_speed&quot;, &quot;depart_sky_coverage&quot;, 
+  &quot;depart_pressure&quot;, &quot;depart_visibility&quot;, &quot;depart_apparent_temperature&quot;, 
+  &quot;depart_wind_speed_scale&quot;, &quot;depart_wind_direction_cat&quot;
+)
+
+bfd_galeao &lt;- bfd %&gt;%
+  filter(depart == &quot;SBGL&quot;) %&gt;%
+  select(all_of(depart_features))</code></pre>
+</div>
+<div id="remoção-de-nulos" class="section level2">
+<h2>Remoção de nulos</h2>
+<pre class="r"><code>percentual_nulos &lt;- bfd_galeao %&gt;%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) %&gt;%
+  pivot_longer(
+    cols = everything(),
+    names_to = &quot;coluna&quot;,
+    values_to = &quot;perc_na&quot;
+  ) %&gt;%
+  arrange(desc(perc_na))
+
+percentual_nulos</code></pre>
+<pre><code>## # A tibble: 16 × 2
+##    coluna                      perc_na
+##    &lt;chr&gt;                         &lt;dbl&gt;
+##  1 depart_sky_coverage          24.9  
+##  2 delay_depart                  3.97 
+##  3 depart_wind_direction         3.65 
+##  4 depart_wind_direction_cat     3.65 
+##  5 depart_air_temperature        0.450
+##  6 depart_dew_point              0.450
+##  7 depart_relative_humidity      0.450
+##  8 depart_apparent_temperature   0.450
+##  9 depart_wind_speed             0.439
+## 10 depart_pressure               0.439
+## 11 depart_visibility             0.439
+## 12 depart_wind_speed_scale       0.439
+## 13 depart                        0    
+## 14 arrival                       0    
+## 15 company                       0    
+## 16 depart_day_period             0</code></pre>
+<pre class="r"><code>bfd_galeao &lt;- bfd_galeao %&gt;%
+  select(-depart_sky_coverage)      
+
+# remove linhas com qualquer NA
+bfd_galeao &lt;- na.omit(bfd_galeao)</code></pre>
+<ul>
+<li>A coluna “depart_sky_coverage” foi removido devido ao fato de
+apresentar uma quantidade de nulos elevada e remover as linhas dele
+poderia reduzir bastante o dataset.</li>
+<li>Para os valores restantes que tem 4% ou menos de nulos, removi as
+linhas que houvesse algum nulo.</li>
+</ul>
+</div>
+<div id="variável-alvo" class="section level2">
+<h2>Variável-alvo</h2>
+<pre class="r"><code>summary(bfd_galeao$delay_depart)</code></pre>
+<pre><code>##      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+## -1447.000    -7.000    -2.000     5.809     6.000  1646.000</code></pre>
+<pre class="r"><code>bfd_galeao &lt;- bfd_galeao %&gt;% filter(between(delay_depart, -480, 480))
+summary(bfd_galeao$delay_depart)</code></pre>
+<pre><code>##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+## -435.000   -7.000   -2.000    4.272    6.000  465.000</code></pre>
+</div>
+<div id="aplicação-do-one-hot-encoder-nas-variáveis-categóricas" class="section level2">
+<h2>Aplicação do One hot encoder nas variáveis categóricas</h2>
+<pre class="r"><code># features categóricas
+cat_features &lt;- c(&quot;company&quot;, 
+                  &quot;depart_day_period&quot;, 
+                  &quot;depart_wind_speed_scale&quot;, 
+                  &quot;depart_wind_direction_cat&quot;)
+
+# aplica o one-hot encoding em cada coluna categórica
+for (feat in cat_features) {
+  cm &lt;- categ_mapping(feat)                   # cria o mapeador
+  transformed &lt;- transform(cm, bfd_galeao)      # aplica transformação
+  
+  # remove colunas totalmente zeradas
+  transformed &lt;- transformed[, colSums(transformed) &gt; 0, drop = FALSE]
+  
+  # remove coluna original e adiciona as novas
+  bfd_galeao[[feat]] &lt;- NULL
+  bfd_galeao &lt;- cbind(bfd_galeao, transformed)
+}
+
+# dataset final atualizado
+head(bfd_galeao)</code></pre>
+<pre><code>##   depart arrival delay_depart depart_air_temperature depart_dew_point
+## 1   SBGL    EDDF            9                     27               23
+## 2   SBGL    EDDF            0                     31               22
+## 3   SBGL    EDDF            9                     27               23
+## 4   SBGL    EDDF            9                     22               22
+## 5   SBGL    EDDF           -4                     24               22
+## 6   SBGL    EDDF            5                     27               23
+##   depart_relative_humidity depart_wind_direction depart_wind_speed
+## 1                    78.76                    70                13
+## 2                    58.78                    80                 7
+## 3                    78.76                   220                11
+## 4                   100.00                   160                 9
+## 5                    88.59                   120                 6
+## 6                    78.76                   140                13
+##   depart_pressure depart_visibility depart_apparent_temperature companyAAL
+## 1           29.77              6.21                    29.62222          0
+## 2           29.71              6.21                    34.54444          0
+## 3           29.68              6.21                    29.62222          0
+## 4           29.88              1.86                    22.00000          0
+## 5           29.77              4.97                    24.00000          0
+## 6           30.00              4.97                    29.62222          0
+##   companyABD companyAFR companyAJB companyARG companyAVA companyAWC companyAZN
+## 1          0          0          0          0          0          0          0
+## 2          0          0          0          0          0          0          0
+## 3          0          0          0          0          0          0          0
+## 4          0          0          0          0          0          0          0
+## 5          0          0          0          0          0          0          0
+## 6          0          0          0          0          0          0          0
+##   companyAZP companyAZU companyBAW companyCKS companyCLX companyCMP companyDAL
+## 1          0          0          0          0          0          0          0
+## 2          0          0          0          0          0          0          0
+## 3          0          0          0          0          0          0          0
+## 4          0          0          0          0          0          0          0
+## 5          0          0          0          0          0          0          0
+## 6          0          0          0          0          0          0          0
+##   companyDJT companyDLH companyFBZ companyGLO companyGTI companyGXA companyIBE
+## 1          0          1          0          0          0          0          0
+## 2          0          1          0          0          0          0          0
+## 3          0          1          0          0          0          0          0
+## 4          0          1          0          0          0          0          0
+## 5          0          1          0          0          0          0          0
+## 6          0          1          0          0          0          0          0
+##   companyJAT companyJES companyJMK companyKLM companyLAE companyLAN companyLCO
+## 1          0          0          0          0          0          0          0
+## 2          0          0          0          0          0          0          0
+## 3          0          0          0          0          0          0          0
+## 4          0          0          0          0          0          0          0
+## 5          0          0          0          0          0          0          0
+## 6          0          0          0          0          0          0          0
+##   companyLPE companyLTG companyMWM companyNCR companyOMI companyQCL companyQTR
+## 1          0          0          0          0          0          0          0
+## 2          0          0          0          0          0          0          0
+## 3          0          0          0          0          0          0          0
+## 4          0          0          0          0          0          0          0
+## 5          0          0          0          0          0          0          0
+## 6          0          0          0          0          0          0          0
+##   companyRER companySID companySKU companySRU companySWQ companyTAM companyTAP
+## 1          0          0          0          0          0          0          0
+## 2          0          0          0          0          0          0          0
+## 3          0          0          0          0          0          0          0
+## 4          0          0          0          0          0          0          0
+## 5          0          0          0          0          0          0          0
+## 6          0          0          0          0          0          0          0
+##   companyTTL companyUAE companyUAL depart_day_periodNight
+## 1          0          0          0                      0
+## 2          0          0          0                      0
+## 3          0          0          0                      0
+## 4          0          0          0                      0
+## 5          0          0          0                      0
+## 6          0          0          0                      0
+##   depart_day_periodEarly Morning depart_day_periodMid Morning
+## 1                              0                            0
+## 2                              0                            0
+## 3                              0                            0
+## 4                              0                            0
+## 5                              0                            0
+## 6                              0                            0
+##   depart_day_periodLate Morning depart_day_periodAfternoon
+## 1                             0                          0
+## 2                             0                          0
+## 3                             0                          0
+## 4                             0                          0
+## 5                             0                          0
+## 6                             0                          0
+##   depart_day_periodEarly Evening depart_day_periodLate Evening
+## 1                              1                             0
+## 2                              1                             0
+## 3                              1                             0
+## 4                              1                             0
+## 5                              1                             0
+## 6                              1                             0
+##   depart_wind_speed_scaleCalm depart_wind_speed_scaleLight Air
+## 1                           0                                0
+## 2                           0                                0
+## 3                           0                                0
+## 4                           0                                0
+## 5                           0                                0
+## 6                           0                                0
+##   depart_wind_speed_scaleLight Breeze depart_wind_speed_scaleGentle Breeze
+## 1                                   0                                    0
+## 2                                   0                                    1
+## 3                                   0                                    0
+## 4                                   0                                    1
+## 5                                   1                                    0
+## 6                                   0                                    0
+##   depart_wind_speed_scaleModerate Breeze depart_wind_speed_scaleFresh Breeze
+## 1                                      1                                   0
+## 2                                      0                                   0
+## 3                                      1                                   0
+## 4                                      0                                   0
+## 5                                      0                                   0
+## 6                                      1                                   0
+##   depart_wind_speed_scaleStrong Breeze depart_wind_direction_catN
+## 1                                    0                          0
+## 2                                    0                          0
+## 3                                    0                          0
+## 4                                    0                          0
+## 5                                    0                          0
+## 6                                    0                          0
+##   depart_wind_direction_catNNE depart_wind_direction_catNE
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catENE depart_wind_direction_catE
+## 1                            1                          0
+## 2                            0                          1
+## 3                            0                          0
+## 4                            0                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catESE depart_wind_direction_catSE
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            1                           0
+## 6                            0                           1
+##   depart_wind_direction_catSSE depart_wind_direction_catS
+## 1                            0                          0
+## 2                            0                          0
+## 3                            0                          0
+## 4                            1                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catSSW depart_wind_direction_catSW
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           1
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catWSW depart_wind_direction_catW
+## 1                            0                          0
+## 2                            0                          0
+## 3                            0                          0
+## 4                            0                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catWNW depart_wind_direction_catNW
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catNNW
+## 1                            0
+## 2                            0
+## 3                            0
+## 4                            0
+## 5                            0
+## 6                            0</code></pre>
+</div>
+<div id="divisão-treino-e-teste" class="section level2">
+<h2>Divisão treino e teste</h2>
+<pre class="r"><code># variável alvo
+target &lt;- &quot;delay_depart&quot;
+
+# remover colunas não usadas
+features &lt;- setdiff(names(bfd_galeao), c(&quot;arrival&quot;, &quot;depart&quot;))
+
+# split treino/teste
 set.seed(123)
 sr &lt;- sample_random()
-sr &lt;- train_test(sr, voos_galeao_modelo)
-galeao_train &lt;- sr$train
-galeao_test &lt;- sr$test</code></pre>
-<div id="árvore-de-decisão" class="section level3">
-<h3>Árvore de decisão</h3>
-<pre class="r"><code># Training
-model &lt;- reg_dtree(&quot;delay_depart&quot;)
-model &lt;- fit(model, galeao_train)</code></pre>
-<pre><code>## Warning in tree::tree(regression, data): NAs introduced by coercion</code></pre>
-<pre class="r"><code># Model adjustment
+sr &lt;- train_test(sr, bfd_galeao[, features])
 
-train_prediction &lt;- predict(model, galeao_train)</code></pre>
-<pre><code>## Warning in pred1.tree(object, tree.matrix(newdata)): NAs introduced by coercion</code></pre>
-<pre class="r"><code>galeao_train_predictand &lt;- galeao_train[,&quot;delay_depart&quot;]
-train_eval &lt;- evaluate(model, galeao_train_predictand, train_prediction)
-print(train_eval$metrics)</code></pre>
-<pre><code>##        mse    smape           R2
-## 1 6332.825 1.611182 4.440892e-16</code></pre>
-<pre class="r"><code>test_prediction &lt;- predict(model, galeao_test)</code></pre>
-<pre><code>## Warning in pred1.tree(object, tree.matrix(newdata)): NAs introduced by coercion</code></pre>
-<pre class="r"><code>galeao_test_predictand &lt;- galeao_test[,&quot;delay_depart&quot;]
-test_eval &lt;- evaluate(model, galeao_test_predictand, test_prediction)
-print(test_eval$metrics)</code></pre>
-<pre><code>##        mse    smape            R2
-## 1 5995.833 1.614393 -0.0003008778</code></pre>
-</div>
-<div id="knn" class="section level3">
-<h3>KNN</h3>
-<pre class="r"><code># Training
-model &lt;- reg_knn(&quot;delay_depart&quot;, k=5)
-model &lt;- fit(model, galeao_train)</code></pre>
-<pre class="r"><code># Model adjustment
+bfd_train &lt;- sr$train
+bfd_test  &lt;- sr$test
 
-#train_prediction &lt;- predict(model, galeao_train)
-#galeao_train_predictand &lt;- galeao_train[,&quot;delay_depart&quot;]
-#train_eval &lt;- evaluate(model, galeao_train_predictand, train_prediction)
-#print(train_eval$metrics)</code></pre>
-<pre class="r"><code>#test_prediction &lt;- predict(model, galeao_test)
-#galeao_test_predictand &lt;- galeao_test[,&quot;delay_depart&quot;]
-#test_eval &lt;- evaluate(model, galeao_test_predictand, test_prediction)
-#print(test_eval$metrics)</code></pre>
-</div>
-<div id="svm" class="section level3">
-<h3>SVM</h3>
-<pre class="r"><code># Training
-#model &lt;- reg_svm(&quot;delay_depart&quot;, epsilon=0.2, cost=40.000)
-#model &lt;- fit(model, galeao_train)</code></pre>
-<pre class="r"><code># Model adjustment
+# Garantir colunas consistentes entre treino e teste
+common_cols &lt;- intersect(names(bfd_train), names(bfd_test))
+bfd_train &lt;- bfd_train[, common_cols]
+bfd_test  &lt;- bfd_test[, common_cols]
 
-#train_prediction &lt;- predict(model, galeao_train)
-#galeao_train_predictand &lt;- galeao_train[,&quot;delay_depart&quot;]
-#train_eval &lt;- evaluate(model, galeao_train_predictand, train_prediction)
-#print(train_eval$metrics)</code></pre>
-<pre class="r"><code>#test_prediction &lt;- predict(model, galeao_test)
-#galeao_test_predictand &lt;- galeao_test[,&quot;delay_depart&quot;]
-#test_eval &lt;- evaluate(model, galeao_test_predictand, test_prediction)
-#print(test_eval$metrics)</code></pre>
-</div>
-<div id="random-forest" class="section level3">
-<h3>Random Forest</h3>
-<pre class="r"><code># Training
-model &lt;- reg_rf(&quot;delay_depart&quot;, mtry=7,ntree=30)
-model &lt;- fit(model, galeao_train)</code></pre>
-<pre class="r"><code># Model adjustment
 
-train_prediction &lt;- predict(model, galeao_train)
-galeao_train_predictand &lt;- galeao_train[,&quot;delay_depart&quot;]
-train_eval &lt;- evaluate(model, galeao_train_predictand, train_prediction)
-print(train_eval$metrics)</code></pre>
-<pre><code>##        mse smape        R2
-## 1 1235.514   NaN 0.8049032</code></pre>
-<pre class="r"><code>test_prediction &lt;- predict(model, galeao_test)
-galeao_test_predictand &lt;- galeao_test[,&quot;delay_depart&quot;]
-test_eval &lt;- evaluate(model, galeao_test_predictand, test_prediction)
-print(test_eval$metrics)</code></pre>
-<pre><code>##        mse    smape         R2
-## 1 8641.957 1.595277 -0.4417609</code></pre>
+# Função auxiliar para treinar e avaliar
+avaliar_modelo &lt;- function(model, nome_modelo) {
+  train_pred &lt;- predict(model, bfd_train)
+  train_true &lt;- bfd_train[, target]
+  train_eval &lt;- evaluate(model, train_true, train_pred)$metrics
+  train_eval &lt;- cbind(dataset = paste0(nome_modelo, &quot;_treino&quot;), train_eval)
+  
+  test_pred &lt;- predict(model, bfd_test)
+  test_true &lt;- bfd_test[, target]
+  test_eval &lt;- evaluate(model, test_true, test_pred)$metrics
+  test_eval &lt;- cbind(dataset = paste0(nome_modelo, &quot;_teste&quot;), test_eval)
+  
+  rbind(train_eval, test_eval)
+}
+
+# Modelos
+
+# Árvore de decisão
+#dtree_model &lt;- reg_dtree(target)
+#dtree_model &lt;- fit(dtree_model, bfd_train)
+#dtree_results &lt;- avaliar_modelo(dtree_model, &quot;Árvore de Decisão&quot;)
+
+
+# KNN
+knn_model &lt;- reg_knn(target, k=5)
+knn_model &lt;- fit(knn_model, bfd_train)
+knn_results &lt;- avaliar_modelo(knn_model, &quot;KNN5&quot;)
+
+knn_model &lt;- reg_knn(target, k=7)
+knn_model &lt;- fit(knn_model, bfd_train)
+knn7_results &lt;- avaliar_modelo(knn_model, &quot;KNN7&quot;)
+
+# SVM
+svm_model &lt;- reg_svm(target, epsilon=0.2, cost=40.000)
+svm_model &lt;- fit(svm_model, bfd_train)</code></pre>
+<pre><code>## Warning in svm.default(x = x, y = y, epsilon = obj$epsilon, cost = obj$cost, :
+## Variable(s) &#39;companySRU&#39; and &#39;companySWQ&#39; constant. Cannot scale data.</code></pre>
+<pre class="r"><code>svm_results &lt;- avaliar_modelo(svm_model, &quot;SVM&quot;)
+
+# Random Forest
+rf_model &lt;- reg_rf(target, mtry=7,ntree=30)
+rf_model &lt;- fit(rf_model, bfd_train)
+rf_results &lt;- avaliar_modelo(rf_model, &quot;RF&quot;)
+
+# juntar todos os resultados
+results &lt;- rbind(rf_results, svm_results, knn_results, knn7_results)
+
+print(results)</code></pre>
+<pre><code>##       dataset       mse    smape          R2
+## 1   RF_treino  451.2337 1.279131  0.48938822
+## 2    RF_teste 1135.5448 1.478398  0.04357825
+## 3  SVM_treino  837.7361 1.018246  0.05202572
+## 4   SVM_teste 1238.5708 1.368502 -0.04319619
+## 5 KNN5_treino  677.7896      NaN  0.23301965
+## 6  KNN5_teste 1361.9526      NaN -0.14711557
+## 7 KNN7_treino  729.3137      NaN  0.17471543
+## 8  KNN7_teste 1304.1526      NaN -0.09843299</code></pre>
 </div>
 </div>
 

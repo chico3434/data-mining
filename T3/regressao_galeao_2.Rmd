@@ -1,0 +1,234 @@
+---
+title: "Regressão Galeão"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(daltoolbox)
+```
+
+# Pré-processamento dos dados
+
+## Carregamento do dataframe
+
+```{r}
+load("../bfd_2022.rdata")
+
+cols <- c("expected_depart", "real_depart", "expected_arrival", "real_arrival")
+
+for (col in cols) {
+  bfd[[col]] <- as.POSIXct(bfd[[col]])
+}
+
+
+```
+
+## Filtro do Dataframe por apenas features de depart e aeroporto galeao
+
+```{r}
+
+bfd$mes <- factor(month(bfd$expected_depart))
+bfd$dia_semana <- factor(weekdays(bfd$expected_depart))
+
+depart_features <- c(
+  "depart", "arrival", "company", "depart_day_period", "delay_depart", 
+  "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", 
+  "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", 
+  "depart_pressure", "depart_visibility", "depart_apparent_temperature", 
+  "depart_wind_speed_scale", "depart_wind_direction_cat", "mes", "dia_semana"
+)
+
+bfd_galeao <- bfd %>%
+  filter(depart == "SBGL") %>%
+  select(all_of(depart_features))
+```
+
+## Remoção de nulos
+
+```{r}
+
+percentual_nulos <- bfd_galeao %>%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "coluna",
+    values_to = "perc_na"
+  ) %>%
+  arrange(desc(perc_na))
+
+percentual_nulos
+```
+
+
+```{r}
+bfd_galeao <- bfd_galeao %>%
+  select(-c(depart_sky_coverage, depart_wind_speed_scale, depart_wind_direction_cat))      
+
+# remove linhas com qualquer NA
+bfd_galeao <- na.omit(bfd_galeao)
+```
+
+- A coluna "depart_sky_coverage" foi removido devido ao fato de apresentar uma quantidade de nulos elevada e remover as linhas dele poderia reduzir bastante o dataset.
+- Para os valores restantes que tem 4% ou menos de nulos, removi as linhas que houvesse algum nulo.
+
+## Variável-alvo
+
+```{r}
+summary(bfd_galeao$delay_depart)
+```
+```{r}
+bfd_galeao <- bfd_galeao %>% filter(between(delay_depart, -480, 480))
+summary(bfd_galeao$delay_depart)
+```
+
+
+## Aplicação do One hot encoder nas variáveis categóricas
+
+```{r}
+# features categóricas
+cat_features <- c("company", 
+                  "depart_day_period", 
+                  #"depart_wind_speed_scale", 
+                  #"depart_wind_direction_cat",
+                  "mes",
+                  "dia_semana")
+
+# aplica o one-hot encoding em cada coluna categórica
+for (feat in cat_features) {
+  cm <- categ_mapping(feat)                   # cria o mapeador
+  transformed <- transform(cm, bfd_galeao)      # aplica transformação
+  
+  # remove colunas totalmente zeradas
+  transformed <- transformed[, colSums(transformed) > 0, drop = FALSE]
+  
+  # remove coluna original e adiciona as novas
+  bfd_galeao[[feat]] <- NULL
+  bfd_galeao <- cbind(bfd_galeao, transformed)
+}
+
+# dataset final atualizado
+head(bfd_galeao)
+
+```
+
+## Divisão treino e teste
+```{r}
+
+# variável alvo
+target <- "delay_depart"
+
+# remover colunas não usadas
+features <- setdiff(names(bfd_galeao), c("arrival", "depart"))
+
+# split treino/teste
+set.seed(123)
+sr <- sample_random()
+sr <- train_test(sr, bfd_galeao[, features])
+
+bfd_train <- sr$train
+bfd_test  <- sr$test
+
+# Garantir colunas consistentes entre treino e teste
+common_cols <- intersect(names(bfd_train), names(bfd_test))
+bfd_train <- bfd_train[, common_cols]
+bfd_test  <- bfd_test[, common_cols]
+
+
+# Função auxiliar para treinar e avaliar
+avaliar_modelo <- function(model, nome_modelo) {
+  train_pred <- predict(model, bfd_train)
+  train_true <- bfd_train[, target]
+  train_eval <- evaluate(model, train_true, train_pred)$metrics
+  train_eval <- cbind(dataset = paste0(nome_modelo, "_treino"), train_eval)
+  
+  test_pred <- predict(model, bfd_test)
+  test_true <- bfd_test[, target]
+  test_eval <- evaluate(model, test_true, test_pred)$metrics
+  test_eval <- cbind(dataset = paste0(nome_modelo, "_teste"), test_eval)
+  
+  rbind(train_eval, test_eval)
+}
+
+
+
+smape <- function(prev, real) {
+  return( (1/length(real)) * sum( abs(prev - real) / ((abs(real + prev)) / 2) ) * 100 )
+}
+
+mse <- function(prev, real) {
+  return(mean((prev-real)^2))
+}
+
+r2 <- function(prev, real) {
+  sqres <- sum((real - prev)^2)
+  sqtot <- sum((real - mean(real))^2)
+  return((1 - (sqres/sqtot)))
+}
+
+
+prev_media <- rep(mean(bfd_train[, target]), length(bfd_train[, target]))
+baseline_media_treino <- data.frame(
+  dataset = "baseline_media_treino",
+  mse = mse(prev_media, bfd_train[, target]),
+  smape = smape(prev_media, bfd_train[, target]),
+  R2 = r2(prev_media, bfd_train[, target])
+)
+
+prev_media <- rep(mean(bfd_train[, target]), length(bfd_test[, target]))
+baseline_media_teste <- data.frame(
+  dataset = "baseline_media_teste",
+  mse = mse(prev_media, bfd_test[, target]),
+  smape = smape(prev_media, bfd_test[, target]),
+  R2 = r2(prev_media, bfd_test[, target])
+)
+
+prev_mediana <- rep(median(bfd_train[, target]), length(bfd_train[, target]))
+baseline_mediana_treino <- data.frame(
+  dataset = "baseline_mediana_treino",
+  mse = mse(prev_mediana, bfd_train[, target]),
+  smape = smape(prev_mediana, bfd_train[, target]),
+  R2 = r2(prev_mediana, bfd_train[, target])
+)
+
+prev_mediana <- rep(median(bfd_train[, target]), length(bfd_test[, target]))
+baseline_mediana_teste <- data.frame(
+  dataset = "baseline_mediana_teste",
+  mse = mse(prev_mediana, bfd_test[, target]),
+  smape = smape(prev_mediana, bfd_test[, target]),
+  R2 = r2(prev_mediana, bfd_test[, target])
+)
+
+# Modelos
+
+# Árvore de decisão
+#dtree_model <- reg_dtree(target)
+#dtree_model <- fit(dtree_model, bfd_train)
+#dtree_results <- avaliar_modelo(dtree_model, "Árvore de Decisão")
+
+
+# KNN
+knn_model <- reg_knn(target, k=5)
+knn_model <- fit(knn_model, bfd_train)
+knn_results <- avaliar_modelo(knn_model, "KNN5")
+
+knn_model <- reg_knn(target, k=7)
+knn_model <- fit(knn_model, bfd_train)
+knn7_results <- avaliar_modelo(knn_model, "KNN7")
+
+# SVM
+svm_model <- reg_svm(target, epsilon=0.2, cost=40.000)
+svm_model <- fit(svm_model, bfd_train)
+svm_results <- avaliar_modelo(svm_model, "SVM")
+
+# Random Forest
+rf_model <- reg_rf(target, mtry=7,ntree=30)
+rf_model <- fit(rf_model, bfd_train)
+rf_results <- avaliar_modelo(rf_model, "RF")
+
+# juntar todos os resultados
+results <- rbind(baseline_media_treino, baseline_media_teste, baseline_mediana_treino, baseline_mediana_teste, rf_results, svm_results, knn_results, knn7_results)
+
+print(results)
+```
