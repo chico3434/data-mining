@@ -375,7 +375,8 @@ depart_features &lt;- c(
   &quot;depart&quot;, &quot;arrival&quot;, &quot;company&quot;, &quot;depart_day_period&quot;, &quot;status_depart&quot;, 
   &quot;depart_air_temperature&quot;, &quot;depart_dew_point&quot;, &quot;depart_relative_humidity&quot;, 
   &quot;depart_wind_direction&quot;, &quot;depart_wind_speed&quot;, &quot;depart_sky_coverage&quot;, 
-  &quot;depart_pressure&quot;, &quot;depart_visibility&quot;, &quot;depart_apparent_temperature&quot;, &quot;mes&quot;, &quot;dia_semana&quot;
+  &quot;depart_pressure&quot;, &quot;depart_visibility&quot;, &quot;depart_apparent_temperature&quot;, 
+  &quot;depart_wind_speed_scale&quot;, &quot;depart_wind_direction_cat&quot;, &quot;mes&quot;, &quot;dia_semana&quot;
 )
 
 bfd_galeao &lt;- bfd %&gt;%
@@ -394,25 +395,27 @@ bfd_galeao &lt;- bfd %&gt;%
   arrange(desc(perc_na))
 
 percentual_nulos</code></pre>
-<pre><code>## # A tibble: 16 × 2
+<pre><code>## # A tibble: 18 × 2
 ##    coluna                      perc_na
 ##    &lt;chr&gt;                         &lt;dbl&gt;
 ##  1 depart_sky_coverage          24.9  
 ##  2 status_depart                 3.97 
 ##  3 depart_wind_direction         3.65 
-##  4 depart_air_temperature        0.450
-##  5 depart_dew_point              0.450
-##  6 depart_relative_humidity      0.450
-##  7 depart_apparent_temperature   0.450
-##  8 depart_wind_speed             0.439
-##  9 depart_pressure               0.439
-## 10 depart_visibility             0.439
-## 11 depart                        0    
-## 12 arrival                       0    
-## 13 company                       0    
-## 14 depart_day_period             0    
-## 15 mes                           0    
-## 16 dia_semana                    0</code></pre>
+##  4 depart_wind_direction_cat     3.65 
+##  5 depart_air_temperature        0.450
+##  6 depart_dew_point              0.450
+##  7 depart_relative_humidity      0.450
+##  8 depart_apparent_temperature   0.450
+##  9 depart_wind_speed             0.439
+## 10 depart_pressure               0.439
+## 11 depart_visibility             0.439
+## 12 depart_wind_speed_scale       0.439
+## 13 depart                        0    
+## 14 arrival                       0    
+## 15 company                       0    
+## 16 depart_day_period             0    
+## 17 mes                           0    
+## 18 dia_semana                    0</code></pre>
 <pre class="r"><code>bfd_galeao &lt;- bfd_galeao %&gt;%
   select(-depart_sky_coverage)      
 
@@ -444,7 +447,8 @@ antecipados e pontuais, ou seja, baixa quantidade de atrasos.</li>
 <pre class="r"><code># features categóricas
 cat_features &lt;- c(&quot;company&quot;, 
                   &quot;depart_day_period&quot;, 
-                  &quot;mes&quot;, &quot;dia_semana&quot;)
+                  &quot;depart_wind_speed_scale&quot;, 
+                  &quot;depart_wind_direction_cat&quot;, &quot;mes&quot;, &quot;dia_semana&quot;)
 
 # aplica o one-hot encoding em cada coluna categórica
 for (feat in cat_features) {
@@ -545,34 +549,111 @@ head(bfd_galeao)</code></pre>
 ## 4                             0                          0
 ## 5                             0                          0
 ## 6                             0                          0
-##   depart_day_periodEarly Evening depart_day_periodLate Evening mes1 mes2 mes3
-## 1                              1                             0    1    0    0
-## 2                              1                             0    1    0    0
-## 3                              1                             0    1    0    0
-## 4                              1                             0    1    0    0
-## 5                              1                             0    1    0    0
-## 6                              1                             0    1    0    0
-##   mes4 mes5 mes6 mes7 mes8 mes9 mes10 mes11 mes12 dia_semanaFriday
-## 1    0    0    0    0    0    0     0     0     0                0
-## 2    0    0    0    0    0    0     0     0     0                0
-## 3    0    0    0    0    0    0     0     0     0                0
-## 4    0    0    0    0    0    0     0     0     0                0
-## 5    0    0    0    0    0    0     0     0     0                0
-## 6    0    0    0    0    0    0     0     0     0                0
-##   dia_semanaMonday dia_semanaSaturday dia_semanaSunday dia_semanaThursday
-## 1                0                  1                0                  0
-## 2                1                  0                0                  0
-## 3                0                  0                0                  1
-## 4                0                  1                0                  0
-## 5                1                  0                0                  0
-## 6                0                  0                0                  1
-##   dia_semanaTuesday dia_semanaWednesday
-## 1                 0                   0
-## 2                 0                   0
-## 3                 0                   0
-## 4                 0                   0
-## 5                 0                   0
-## 6                 0                   0</code></pre>
+##   depart_day_periodEarly Evening depart_day_periodLate Evening
+## 1                              1                             0
+## 2                              1                             0
+## 3                              1                             0
+## 4                              1                             0
+## 5                              1                             0
+## 6                              1                             0
+##   depart_wind_speed_scaleCalm depart_wind_speed_scaleLight Air
+## 1                           0                                0
+## 2                           0                                0
+## 3                           0                                0
+## 4                           0                                0
+## 5                           0                                0
+## 6                           0                                0
+##   depart_wind_speed_scaleLight Breeze depart_wind_speed_scaleGentle Breeze
+## 1                                   0                                    0
+## 2                                   0                                    1
+## 3                                   0                                    0
+## 4                                   0                                    1
+## 5                                   1                                    0
+## 6                                   0                                    0
+##   depart_wind_speed_scaleModerate Breeze depart_wind_speed_scaleFresh Breeze
+## 1                                      1                                   0
+## 2                                      0                                   0
+## 3                                      1                                   0
+## 4                                      0                                   0
+## 5                                      0                                   0
+## 6                                      1                                   0
+##   depart_wind_speed_scaleStrong Breeze depart_wind_direction_catN
+## 1                                    0                          0
+## 2                                    0                          0
+## 3                                    0                          0
+## 4                                    0                          0
+## 5                                    0                          0
+## 6                                    0                          0
+##   depart_wind_direction_catNNE depart_wind_direction_catNE
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catENE depart_wind_direction_catE
+## 1                            1                          0
+## 2                            0                          1
+## 3                            0                          0
+## 4                            0                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catESE depart_wind_direction_catSE
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            1                           0
+## 6                            0                           1
+##   depart_wind_direction_catSSE depart_wind_direction_catS
+## 1                            0                          0
+## 2                            0                          0
+## 3                            0                          0
+## 4                            1                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catSSW depart_wind_direction_catSW
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           1
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catWSW depart_wind_direction_catW
+## 1                            0                          0
+## 2                            0                          0
+## 3                            0                          0
+## 4                            0                          0
+## 5                            0                          0
+## 6                            0                          0
+##   depart_wind_direction_catWNW depart_wind_direction_catNW
+## 1                            0                           0
+## 2                            0                           0
+## 3                            0                           0
+## 4                            0                           0
+## 5                            0                           0
+## 6                            0                           0
+##   depart_wind_direction_catNNW mes1 mes2 mes3 mes4 mes5 mes6 mes7 mes8 mes9
+## 1                            0    1    0    0    0    0    0    0    0    0
+## 2                            0    1    0    0    0    0    0    0    0    0
+## 3                            0    1    0    0    0    0    0    0    0    0
+## 4                            0    1    0    0    0    0    0    0    0    0
+## 5                            0    1    0    0    0    0    0    0    0    0
+## 6                            0    1    0    0    0    0    0    0    0    0
+##   mes10 mes11 mes12 dia_semanaFriday dia_semanaMonday dia_semanaSaturday
+## 1     0     0     0                0                0                  1
+## 2     0     0     0                0                1                  0
+## 3     0     0     0                0                0                  0
+## 4     0     0     0                0                0                  1
+## 5     0     0     0                0                1                  0
+## 6     0     0     0                0                0                  0
+##   dia_semanaSunday dia_semanaThursday dia_semanaTuesday dia_semanaWednesday
+## 1                0                  0                 0                   0
+## 2                0                  0                 0                   0
+## 3                0                  1                 0                   0
+## 4                0                  0                 0                   0
+## 5                0                  0                 0                   0
+## 6                0                  1                 0                   0</code></pre>
 </div>
 <div id="divisão-treino-e-teste" class="section level2">
 <h2>Divisão treino e teste</h2>
@@ -660,15 +741,15 @@ mlp_results &lt;- avaliar_modelo(mlp_model, &quot;MLP&quot;)
 results &lt;- rbind(baseline_treino, baseline_teste, rf_results, nb_results, mlp_results)
 
 print(results)</code></pre>
-<pre><code>##           dataset   accuracy precision     recall         f1
-## 1 baseline_treino 0.58908608        NA         NA         NA
-## 2  baseline_teste 0.58535904        NA         NA         NA
-## 3       RF_treino 0.77438513 0.7706938 0.94199976 0.84777968
-## 4        RF_teste 0.61804973 0.6626369 0.83723150 0.73977225
-## 5       NB_treino 0.02969536 0.6620278 0.03949709 0.07454668
-## 6        NB_teste 0.03408773 0.6946565 0.04343675 0.08176101
-## 7      MLP_treino 0.65469536 0.6909315 0.86573360 0.76851803
-## 8       MLP_teste 0.63621123 0.6777358 0.85727924 0.75700738</code></pre>
+<pre><code>##           dataset   accuracy precision      recall         f1
+## 1 baseline_treino 0.58908608        NA          NA         NA
+## 2  baseline_teste 0.58535904        NA          NA         NA
+## 3       RF_treino 0.81337339 0.8187183 0.937967026 0.87429519
+## 4        RF_teste 0.60966750 0.6709012 0.806682578 0.73255310
+## 5       NB_treino 0.01166853 0.6491228 0.008777132 0.01732007
+## 6        NB_teste 0.01341157 0.5625000 0.008591885 0.01692525
+## 7      MLP_treino 0.65756009 0.6847906 0.884355355 0.77188260
+## 8       MLP_teste 0.62894663 0.6666667 0.867780430 0.75404397</code></pre>
 </div>
 </div>
 

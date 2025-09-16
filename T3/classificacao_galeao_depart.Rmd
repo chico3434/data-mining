@@ -33,8 +33,7 @@ depart_features <- c(
   "depart", "arrival", "company", "depart_day_period", "status_depart", 
   "depart_air_temperature", "depart_dew_point", "depart_relative_humidity", 
   "depart_wind_direction", "depart_wind_speed", "depart_sky_coverage", 
-  "depart_pressure", "depart_visibility", "depart_apparent_temperature", 
-  "depart_wind_speed_scale", "depart_wind_direction_cat", "mes", "dia_semana"
+  "depart_pressure", "depart_visibility", "depart_apparent_temperature", "mes", "dia_semana"
 )
 
 bfd_galeao <- bfd %>%
@@ -86,8 +85,7 @@ sort(table(bfd_galeao$status_depart), decreasing = TRUE)
 # features categóricas
 cat_features <- c("company", 
                   "depart_day_period", 
-                  "depart_wind_speed_scale", 
-                  "depart_wind_direction_cat", "mes", "dia_semana")
+                  "mes", "dia_semana")
 
 # aplica o one-hot encoding em cada coluna categórica
 for (feat in cat_features) {
